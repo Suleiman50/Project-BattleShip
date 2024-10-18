@@ -1,2 +1,1 @@
-Please view the Project Phase 1 file
-Push Test (Ghanem)
+Please view the "Project-Plan" file for the current plan in hand
