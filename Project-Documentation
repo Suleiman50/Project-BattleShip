@@ -1,0 +1,35 @@
+Project Documentation
+
+Phase 1:
+In Phase 1, we will divide the work into two sub-phases to allow for parallel development and efficient collaboration:
+
+ Phase 1.1: (Handled by Ali Mohsen and Suleiman Jaber)
+ Phase 1.1 will focus on the following components:
+
+	. Main Menu
+	. Grid Setup and Rules
+	. Game Setup (Ship Placement)
+	. Game Loop (Gameplay)
+	. Handling User Input
+	. Displaying the Winner and Ending the Game
+
+ Phase 1.2: (Handled by Ghanem Zain and Mohamad Othman)
+ Phase 1.2 will focus on game mechanics, including:
+
+	. Grid Modification Logic
+	. Fire Function
+	. Radar Sweep
+	. Smoke Screen
+	. Artillery
+	. Torpedo
+
+This division allows each pair to focus on specific tasks, ensuring a more efficient workflow and a balanced workload for both groups. 
+While tasks are distributed between the two pairs, the team will continue to function as a cohesive unit.
+
+ General Notes:
+	- The entire team will begin by collaborating on the Grid Logic, which forms the foundation for both Phase 1.1 and 1.2.
+	- Each pair will take primary ownership of their assigned tasks while actively collaborating with the other pair to exchange ideas and provide secondary support.
+	- Collaboration between pairs is encouraged, provided it does not interfere with the progress of their own primary tasks.
+	- Regular meetings will be scheduled to ensure that everyone stays aligned, progress is tracked, and overall team harmony is maintained.
+
+This approach balances focus and collaboration, streamlining the development process while maintaining flexibility for cross-pair support.
