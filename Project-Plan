@@ -1,0 +1,23 @@
+Phase 1:
+For the first phase we will divide this phase into 2 different phase: 
+
+- Phase 1.1: Which will be done by Ali Mohsen and Suleiman Jaber.
+	Phase 1.1 Includes:
+		- Main Menu
+		- Grid Setup and Rules
+		- Game Setup (Ship Placement)
+		- Game Loop (Playing the game)
+		- Handle user input
+		- Display winner and end the game.
+
+- Phase 1.2: Which will be done by Ghanem Zain and Mohamad Othman.
+	Phase 1.2 Includes:
+		- Grid Modification Logic
+		- Fire Function
+		- Radar Sweep
+		- Smoke Screen
+		- Artillery 
+		- Torpedo
+
+The entire team will firstly focus on the Grid Logic as it is the basis to both Phase 1.1 and 1.2
+	
