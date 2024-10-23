@@ -48,4 +48,12 @@ Name: smoke_screen
 Return Type: void (no return, modifies grid)
 Function and Parameters: void smoke_screen(int grid[10][10], int row, int col);
 
+Artillery function: Attacks a 2x2 area
+Name: artillery
+Return Type: int (1 if any hit, 0 if all missed)
+Function and Parameters: int artillery(int grid[10][10], int row, int col);
 
+Torpedo function: Attacks an entire row or column
+Name: torpedo
+Return Type: int (1 if any hit, 0 if all missed)
+Function and Parameters: int torpedo(int grid[10][10], char type, int index); 'r' for row, 'c' for column (Chosen by User)
