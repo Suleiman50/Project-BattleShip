@@ -29,3 +29,23 @@ GRID LOGIC:
 	-1 --> Hit (Square had a ship)
 	-2 --> Miss (Square was hit but there was water)
 
+PHASE 1.2 PLAN: (By Mohammad and Ghanem)
+
+Function Names and Parameters:
+
+Fire function: Takes coordinates and updates grid based on hit or miss
+Name: fire
+Return Type: int (1 for hit, 0 for miss, -1 for invalid move)
+Function and Parameters: int fire(int grid[10][10], int row, int col);
+
+Radar function: Checks if there are ships in a 2x2 area
+Name: radar_sweep
+Return Type: int (1 if ship found, 0 if not)
+Function and Parameters: int radar_sweep(int grid[10][10], int row, int col);
+
+Smoke Screen function: Protects a 2x2 area from radar detection
+Name: smoke_screen
+Return Type: void (no return, modifies grid)
+Function and Parameters: void smoke_screen(int grid[10][10], int row, int col);
+
+
