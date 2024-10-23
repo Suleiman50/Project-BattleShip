@@ -28,3 +28,5 @@ GRID LOGIC:
 	2 --> Protected Square (Smoke Screen Effect)
 	-1 --> Hit (Square had a ship)
 	-2 --> Miss (Square was hit but there was water)
+
+test
