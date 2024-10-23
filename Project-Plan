@@ -29,4 +29,3 @@ GRID LOGIC:
 	-1 --> Hit (Square had a ship)
 	-2 --> Miss (Square was hit but there was water)
 
-test
