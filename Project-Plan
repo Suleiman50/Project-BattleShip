@@ -25,8 +25,9 @@ GRID LOGIC:
  The Grid is a matrix of integers, every integer has its own meaning. Below are the integers and their corresponding state:
 	0 --> Water 
 	1 --> Ship
-	2 --> Protected Square (Smoke Screen Effect)
-	-1 --> Hit (Square had a ship)
+	2 --> Protected Water (Smoke Screen Effect)
+	3 --> Protected Ship (Smoke Screen Effect)
+	-1 --> Hit (Square had a ship) (Smoke screen ignores hit squares)
 	-2 --> Miss (Square was hit but there was water)
 
 PHASE 1.2 PLAN: (By Mohammad and Ghanem)
