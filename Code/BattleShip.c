@@ -17,6 +17,269 @@ void DisplayRules()
     printf("\t6. For 2x2 area moves always provide the top left corner Coordinate \n");
     printf("\t7. Please note that any invalid Coordinates will automatically skip your turn \n");
 }
+
+int **allocate()
+{
+    int **grid = (int **)malloc(10 * sizeof(int *));
+    for (int i = 0; i < 10; i++)
+    {
+        grid[i] = (int *)malloc(10 * sizeof(int));
+    }
+    for (int i = 0; i < 10; i++)
+    {
+        for (int j = 0; j < 10; j++)
+        {
+            grid[i][j] = 0;
+        }
+    }
+    return grid;
+}
+struct player
+{
+    char *name;
+    int ships[6];
+    int shipsRemaining;
+    int **grid;
+};
+int fire(int grid[10][10], int row, int col)
+{
+    return 0;
+}
+
+int radar_sweep(int grid[10][10], int row, int col)
+{
+    return 0;
+}
+
+void smoke_screen(int grid[10][10], int row, int col)
+{
+}
+
+int artillery(int grid[10][10], int row, int col)
+{
+    return 0;
+}
+
+int torpedo(int grid[10][10], char type, int index)
+{
+    return 0;
+}
+
+void printGrid(int **grid, int isOwner)
+{
+    printf("   ");
+    for (int i = 0; i < 10; i++)
+    {
+        printf("%c ", 'A' + i);
+    }
+    printf("\n");
+    for (int i = 0; i < 10; i++)
+    {
+        for (int j = -1; j < 10; j++)
+        {
+            if (j == -1)
+            {
+                printf("%d  ", i + 1);
+                continue;
+            }
+            if (grid[i][j] == 0)
+            {
+                printf("~ ");
+            }
+            else if (grid[i][j] > 0)
+            {
+                if (isOwner)
+                {
+                    printf("# ");
+                }
+                else
+                {
+                    printf("~ ");
+                }
+            }
+            else if (grid[i][j] == -1)
+            {
+                printf("O ");
+            }
+            else if (grid[i][j] < -1)
+            {
+                printf("X ");
+            }
+        }
+        printf("\n");
+    }
+}
+int addToGrid(int **grid, char x, int y, char orientation, int size)
+{
+    if (x < 'A' || x > 'J' || y < 1 || y > 10 || !(orientation == 'V' || orientation == 'H'))
+    {
+        printf("Input Error \n");
+        return 0;
+    }
+
+    int col = x - 'A';
+    int row = y - 1;
+
+    if (orientation == 'V')
+    {
+        if (row + size > 10)
+        {
+            printf("Out of bounds Error \n");
+            return 0;
+        }
+        for (int i = 0; i < size; i++)
+        {
+            if (grid[row + i][col] != 0)
+            {
+                printf("Overlap Error \n");
+                return 0;
+            }
+        }
+        for (int i = 0; i < size; i++)
+        {
+            grid[row + i][col] = size;
+        }
+    }
+    else if (orientation == 'H')
+    {
+        if (col + size > 10)
+        {
+            printf("Out of bounds Error \n");
+            return 0;
+        }
+        for (int i = 0; i < size; i++)
+        {
+            if (grid[row][col + i] != 0)
+            {
+                printf("Overlap Error \n");
+                return 0;
+            }
+        }
+        for (int i = 0; i < size; i++)
+        {
+            grid[row][col + i] = size;
+        }
+    }
+    return 1;
+}
+
+void StartLocalGame()
+{
+    char *ptrname1 = (char *)malloc(sizeof(char) * 20);
+    printf("please enter your name (0 - 20 characters)\n");
+    scanf("%s", ptrname1);
+    printf("Welcome to the game %s!\n", ptrname1);
+    char *ptrname2 = (char *)malloc(sizeof(char) * 20);
+    printf("please enter your name (0 - 20 characters)\n");
+    scanf("%s", ptrname2);
+    printf("Welcome to the game %s!\n", ptrname2);
+
+    struct player player1 = {ptrname1, {0, 0, 2, 3, 4, 5}, 4, allocate()};
+    struct player player2 = {ptrname2, {0, 0, 2, 3, 4, 5}, 4, allocate()};
+
+    char X = ' ';
+    int Y = 0;
+    char HV = ' ';
+
+    printf("Welcome %s. \nNow you have to place your ships on this 10X10 grid using this coordinate system:\n", ptrname1);
+    printGrid(player1.grid, 1);
+    printf("For placing ships, choose X Y H/V (USE CAPITAL LETTERS), for example B 3 H: places the tip of the ship on cell B 3 Horizontally\n");
+    while (1)
+    {
+        printf("Where do you want to place the carrier (size 5)?\n");
+        scanf("%c %d %c", &X, &Y, &HV);
+        getchar();
+        if (addToGrid(player1.grid, X, Y, HV, 5))
+        {
+            break;
+        }
+    }
+    printGrid(player1.grid, 1);
+    while (1)
+    {
+        printf("Where do you want to place the battleship (size 4)?\n");
+        scanf("%c %d %c", &X, &Y, &HV);
+        getchar();
+        if (addToGrid(player1.grid, X, Y, HV, 4))
+        {
+            break;
+        }
+    }
+    printGrid(player1.grid, 1);
+    while (1)
+    {
+        printf("Where do you want to place the destroyer (size 3)?\n");
+        scanf("%c %d %c", &X, &Y, &HV);
+        getchar();
+        if (addToGrid(player1.grid, X, Y, HV, 3))
+        {
+            break;
+        }
+    }
+    printGrid(player1.grid, 1);
+    while (1)
+    {
+        printf("Where do you want to place the submarine (size 2)?\n");
+        scanf("%c %d %c", &X, &Y, &HV);
+        getchar();
+        if (addToGrid(player1.grid, X, Y, HV, 2))
+        {
+            break;
+        }
+    }
+    printGrid(player1.grid, 1);
+    printf("\n");
+
+    printf("Welcome %s. \nNow you have to place your ships on this 10X10 grid using this coordinate system:\n", ptrname2);
+    printGrid(player2.grid, 1);
+    printf("For placing ships, choose X Y H/V (USE CAPITAL LETTERS), for example B 3 H: places the tip of the ship on cell B 3 Horizontally\n");
+    while (1)
+    {
+        printf("Where do you want to place the carrier (size 5)?\n");
+        scanf("%c %d %c", &X, &Y, &HV);
+        getchar();
+        if (addToGrid(player2.grid, X, Y, HV, 5))
+        {
+            break;
+        }
+    }
+    printGrid(player2.grid, 1);
+    while (1)
+    {
+        printf("Where do you want to place the battleship (size 4)?\n");
+        scanf("%c %d %c", &X, &Y, &HV);
+        getchar();
+        if (addToGrid(player2.grid, X, Y, HV, 4))
+        {
+            break;
+        }
+    }
+    printGrid(player2.grid, 1);
+    while (1)
+    {
+        printf("Where do you want to place the destroyer (size 3)?\n");
+        scanf("%c %d %c", &X, &Y, &HV);
+        getchar();
+        if (addToGrid(player2.grid, X, Y, HV, 3))
+        {
+            break;
+        }
+    }
+    printGrid(player2.grid, 1);
+    while (1)
+    {
+        printf("Where do you want to place the submarine (size 2)?\n");
+        scanf("%c %d %c", &X, &Y, &HV);
+        getchar();
+        if (addToGrid(player2.grid, X, Y, HV, 2))
+        {
+            break;
+        }
+    }
+    printGrid(player2.grid, 1);
+    printf("\n");
+}
+
 void InitializeGame()
 {
     printf("Welcome To BattleShip (But the better one)\n");
@@ -35,8 +298,7 @@ void InitializeGame()
         getchar();
         if (secondchoice == '0')
         {
-            // StartLocalGame();
-            // We stopped here
+            StartLocalGame();
             return;
         }
         else if (secondchoice == 'b')
@@ -70,23 +332,15 @@ void InitializeGame()
         return;
     }
 }
-void StartLocalGame()
-{
-}
-
 int main()
 {
     InitializeGame();
     return 0;
+
+    // Still have the gameloop to finish and fix a bug in the coordinates
 }
 
 /*
-void StartLocalGame();
-
-Main:
-
-Get input
-Setup Grid
 
 while(true){
     *Display Grid*
@@ -96,23 +350,5 @@ while(true){
         return 1
     }
 }
-
-Struct Player:
-    Ship fleet[4]:
-        ship(1)
-        ship(2)
-        ship(3)
-        ship(4)
-
-    int[][] grid
-    int shipsRemaining
-
-Struct Coordinate:
-    int x
-    int y
-
-Struct ship:
-Coorinates positions[]
-int hits
 
 */
