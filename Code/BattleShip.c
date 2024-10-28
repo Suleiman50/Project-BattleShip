@@ -1,6 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define WATER 0
+#define HIT -1
+#define MISS -2
+
 void DisplayRules()
 {
     printf("Below are the rules of the game: \n");
@@ -41,31 +45,96 @@ struct player
     int ships[6];
     int shipsRemaining;
     int **grid;
+    int radarCount; //Starts at 3
+    int availableScreens; //Increase by 1 per ship sunk
 };
 
-int fire(int grid[10][10], int row, int col)
+void fire(int **grid, int ships[], int row, int col) 
 {
-    return 0;
+    if (row < 0 || row >= 10 || col < 0 || col >= 10) {
+        printf("Invalid coordinates! You lose your turn :(\n");
+        return;
+    }
+
+    if (grid[row][col] == HIT || grid[row][col] == MISS) {
+        printf("You already fired at this location!\n");
+        return;
+    }
+
+    if (grid[row][col] == WATER) {
+        grid[row][col] = MISS;  
+        printf("Miss!\n");
+        return;
+    }
+
+    int shipID = grid[row][col];  
+    ships[shipID]--; 
+    grid[row][col] = HIT; 
+
+    printf("Hit!\n");
+
+    if (ships[shipID] == 0) {
+        printf("You sunk the opponent's %s!\n", 
+               shipID == 2 ? "Submarine" : 
+               shipID == 3 ? "Destroyer" : 
+               shipID == 4 ? "Battleship" : "Carrier");
+    }
 }
 
-int radar_sweep(int grid[10][10], int row, int col)
+void radar_sweep(int **grid, int row, int col, int *radarCount) 
 {
-    return 0;
+    if (*radarCount <= 0) {
+        printf("No radar sweeps remaining! You lose your turn.\n");
+        return;
+    }
+
+    if (row < 0 || row >= 9 || col < 0 || col >= 9) {
+        printf("Invalid coordinates! You lose your turn.\n");
+        return;
+    }
+
+    int found = 0;
+    for (int i = row; i < row + 2; i++) {
+        for (int j = col; j < col + 2; j++) {
+            int cell = grid[i][j];
+            if (cell >= 2 && cell <= 5) {  // Check for a ship
+                found = 1;
+            }
+        }
+    }
+
+    if (found) {
+        printf("Enemy ships found!\n");
+    } else {
+        printf("No enemy ships found.\n");
+    }
+    (*radarCount)--;
 }
 
-void smoke_screen(int grid[10][10], int row, int col)
+void smoke_screen(int **grid, int row, int col, int *availableScreens) 
 {
+    if (*availableScreens <= 0) {
+        printf("No smoke screens available! You lose your turn.\n");
+        return;
+    }
+
+    if (row < 0 || row >= 9 || col < 0 || col >= 9) {
+        printf("Invalid coordinates! You lose your turn.\n");
+        return;
+    }
+
+    for (int i = row; i < row + 2; i++) {
+        for (int j = col; j < col + 2; j++) {
+            grid[i][j] *= 10;  // Mark as protected
+        }
+    }
+
+    (*availableScreens)--;
+    system("clear || cls"); //Clear screen
+    printf("Smoke screen deployed! Your move is hidden.\n");
 }
 
-int artillery(int grid[10][10], int row, int col)
-{
-    return 0;
-}
 
-int torpedo(int grid[10][10], char type, int index)
-{
-    return 0;
-}
 
 void printGrid(int **grid, int isOwner)
 {
