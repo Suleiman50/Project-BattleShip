@@ -134,7 +134,72 @@ void smoke_screen(int **grid, int row, int col, int *availableScreens)
     printf("Smoke screen deployed! Your move is hidden.\n");
 }
 
+void artillery(int **grid, int row, int col) 
+{
+    if (row < 0 || row >= 9 || col < 0 || col >= 9) {
+        printf("Invalid coordinates! You lose your turn.\n");
+        return;
+    }
 
+    int hit = 0;  
+
+    for (int i = row; i < row + 2; i++) {
+        for (int j = col; j < col + 2; j++) {
+            if (grid[i][j] > 0) {  
+                grid[i][j] = HIT;  // Mark as hit if a ship is found
+                hit = 1;
+            } else if (grid[i][j] == WATER) {
+                grid[i][j] = MISS;  
+            }
+        }
+    }
+
+    if (hit) {
+        printf("Artillery hit!\n");
+    } else {
+        printf("Artillery missed!\n");
+    }
+}
+
+
+void torpedo(int **grid, char type, int index) 
+{
+    if (index < 0 || index >= 10) {
+        printf("Invalid index! You lose your turn.\n");
+        return;
+    }
+
+    int hit = 0;  
+
+    if (type == 'R' || type == 'r') {  // Target a row
+        for (int j = 0; j < 10; j++) {
+            if (grid[index][j] > 0) {  
+                grid[index][j] = HIT;  
+                hit = 1;
+            } else if (grid[index][j] == WATER) {
+                grid[index][j] = MISS; 
+            }
+        }
+    } else if (type == 'C' || type == 'c') {  // Target a column
+        for (int i = 0; i < 10; i++) {
+            if (grid[i][index] > 0) {  
+                grid[i][index] = HIT;  
+                hit = 1;
+            } else if (grid[i][index] == WATER) {
+                grid[i][index] = MISS;  
+            }
+        }
+    } else {
+        printf("Invalid type! Use 'R' for row or 'C' for column.\n");
+        return;
+    }
+
+    if (hit) {
+        printf("Torpedo hit!\n");
+    } else {
+        printf("Torpedo missed!\n");
+    }
+}
 
 void printGrid(int **grid, int isOwner)
 {
