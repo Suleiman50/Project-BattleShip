@@ -1,23 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void DisplayRules()
-{
-    printf("Below are the rules of the game: \n");
-    printf("\t1. Each player has a 10X10 grid for them to place ships on \n");
-    printf("\t2. Each player has 4 ships in their fleet of increasing sizes (2 to 5) \n");
-    printf("\t3. You can place ships anywhere on the grid as long as they do not overlap\n");
-    printf("\t4. During each turn the player should choose one of these moves: \n");
-    printf("\t\ta. Fire: hits a certain coordinate on the enemy grid \n");
-    printf("\t\tb. Smoke Screen: protects a 2x2 area from the Radar Sweep \n");
-    printf("\t\tc. Radar Sweep: scans a 2x2 area for enemy ships (you are allowed ONLY 3 moves) \n");
-    printf("\t\td. Artillery: attacks enemy ships on a 2x2 area (allowed ONLY AFTER you sink an enemy's ship) \n");
-    printf("\t\te. Torpedo: attacks enemy ships on an entire row or column (allowed ONLY AFTER you sink the THIRD enemy ship) \n");
-    printf("\t5. For coordinate moves, always provide the X followed by the Y ( (0,0) is the top left corner of the grid) \n");
-    printf("\t6. For 2x2 area moves, always provide the top left corner coordinate \n");
-    printf("\t7. Please note that any invalid coordinates will automatically skip your turn \n");
-}
-
 int **allocate()
 {
     int **grid = (int **)malloc(10 * sizeof(int *));
@@ -117,6 +100,24 @@ void printGrid(int **grid, int isOwner)
         }
         printf("\n");
     }
+}
+
+void DisplayRules()
+{
+    printf("Below are the rules of the game: \n");
+    printf("\t1. Each player has a 10X10 grid for them to place ships on \n");
+    printGrid(allocate(), 1);
+    printf("\t2. Each player has 4 ships in their fleet of increasing sizes (2 to 5) \n");
+    printf("\t3. You can place ships anywhere on the grid as long as they do not overlap\n");
+    printf("\t4. During each turn the player should choose one of these moves: \n");
+    printf("\t\ta. Fire: hits a certain coordinate on the enemy grid \n");
+    printf("\t\tb. Smoke Screen: protects a 2x2 area from the Radar Sweep \n");
+    printf("\t\tc. Radar Sweep: scans a 2x2 area for enemy ships (you are allowed ONLY 3 moves) \n");
+    printf("\t\td. Artillery: attacks enemy ships on a 2x2 area (allowed ONLY AFTER you sink an enemy's ship) \n");
+    printf("\t\te. Torpedo: attacks enemy ships on an entire row or column (allowed ONLY AFTER you sink the THIRD enemy ship) \n");
+    printf("\t5. For coordinate moves, always provide the X followed by the Y ( (0,0) is the top left corner of the grid) \n");
+    printf("\t6. For 2x2 area moves, always provide the top left corner coordinate \n");
+    printf("\t7. Please note that any invalid coordinates will automatically skip your turn \n");
 }
 
 int addToGrid(int **grid, char x, int y, char orientation, int size)
