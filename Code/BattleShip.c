@@ -1,6 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define WATER 0
+#define HIT -1
+#define MISS -2
+void DisplayRules()
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -81,7 +86,211 @@ struct player
     int ships[6];
     int shipsRemaining;
     int **grid;
+    int radarCount; //Starts at 3
+    int availableScreens; //Increase by 1 per ship sunk
+    int shipsSunk;
+    int artilleryAvailable;
+    int artilleryNextTurn;
+    int torpedoAvailable;
 };
+
+
+void fire(int **grid, int ships[], int row, int col, struct player *attacker) 
+{
+    if (row < 0 || row >= 10 || col < 0 || col >= 10) {
+        printf("Invalid coordinates! You lose your turn :(\n");
+        return;
+    }
+
+    if (grid[row][col] == HIT || grid[row][col] == MISS) {
+        printf("You already fired at this location!\n");
+        return;
+    }
+
+    if (grid[row][col] == WATER) {
+        grid[row][col] = MISS;  
+        printf("Miss!\n");
+        return;
+    }
+
+    int shipID = grid[row][col];  
+    ships[shipID]--;  // Decrease health of the ship
+    grid[row][col] = HIT;  // Mark as HIT
+
+    printf("Hit!\n");
+
+    if (ships[shipID] == 0) {
+        printf("You sunk the opponent's %s!\n", 
+               shipID == 2 ? "Submarine" : 
+               shipID == 3 ? "Destroyer" : 
+               shipID == 4 ? "Battleship" : "Carrier");
+
+        attacker->shipsSunk++;  // Track ships sunk
+
+        // Unlock Artillery for the next turn
+        attacker->artilleryNextTurn = 1;
+
+        // Unlock Torpedo if 3 ships are sunk
+        if (attacker->shipsSunk == 3) {
+            attacker->torpedoAvailable = 1;
+            printf("Torpedo unlocked!\n");
+        }
+    }
+}
+
+void radar_sweep(int **grid, int row, int col, int *radarCount) 
+{
+    if (*radarCount <= 0) {
+        printf("No radar sweeps remaining! You lose your turn.\n");
+        return;
+    }
+
+    if (row < 0 || row >= 9 || col < 0 || col >= 9) {
+        printf("Invalid coordinates! You lose your turn.\n");
+        return;
+    }
+
+    int found = 0;
+    for (int i = row; i < row + 2; i++) {
+        for (int j = col; j < col + 2; j++) {
+            int cell = grid[i][j];
+            if (cell >= 2 && cell <= 5) {  // Check for a ship
+                found = 1;
+            }
+        }
+    }
+
+    if (found) {
+        printf("Enemy ships found!\n");
+    } else {
+        printf("No enemy ships found.\n");
+    }
+    (*radarCount)--;
+}
+
+void smoke_screen(int **grid, int row, int col, int *availableScreens) 
+{
+    if (*availableScreens <= 0) {
+        printf("No smoke screens available! You lose your turn.\n");
+        return;
+    }
+
+    if (row < 0 || row >= 9 || col < 0 || col >= 9) {
+        printf("Invalid coordinates! You lose your turn.\n");
+        return;
+    }
+
+    for (int i = row; i < row + 2; i++) {
+        for (int j = col; j < col + 2; j++) {
+            grid[i][j] *= 10;  // Mark as protected
+        }
+    }
+
+    (*availableScreens)--;
+    system("clear || cls"); //Clear screen
+    printf("Smoke screen deployed! Your move is hidden.\n");
+}
+
+void artillery(int **grid, int row, int col, struct player *opponent, struct player *attacker) 
+{
+    // Check if Artillery is available only for the next turn
+    if (!attacker->artilleryNextTurn) {
+        printf("Artillery not available! It was only available for the next turn after sinking a ship.\n");
+        return;
+    }
+
+    if (row < 0 || row >= 9 || col < 0 || col >= 9) {
+        printf("Invalid coordinates! You lose your turn.\n");
+        return;
+    }
+
+    int hit = 0; 
+    int *ships = opponent->ships;  
+
+    for (int i = row; i < row + 2; i++) {
+        for (int j = col; j < col + 2; j++) {
+            if (grid[i][j] > 0) {  // A ship part is found
+                int shipID = grid[i][j];  
+                ships[shipID]--;  
+                grid[i][j] = HIT;  
+                hit = 1;
+
+                if (ships[shipID] == 0) {
+                    printf("You sunk the opponent's %s!\n", 
+                           shipID == 2 ? "Submarine" : 
+                           shipID == 3 ? "Destroyer" : 
+                           shipID == 4 ? "Battleship" : "Carrier");
+
+                    opponent->shipsRemaining--;  // Decrease ships 
+                    attacker->shipsSunk++;  // Increase  attacker's sunk ships
+
+                    // Unlock Torpedo if this was the 3rd ship sunk
+                    if (attacker->shipsSunk == 3) {
+                        attacker->torpedoAvailable = 1;
+                        printf("Torpedo unlocked!\n");
+                    }
+                }
+            } else if (grid[i][j] == WATER) {
+                grid[i][j] = MISS;  
+            }
+        }
+    }
+
+    if (hit) {
+        printf("Artillery hit!\n");
+    } else {
+        printf("Artillery missed!\n");
+    }
+    // Reset the Artillery availability
+    attacker->artilleryNextTurn = 0;
+}
+
+
+void torpedo(int **grid, char type, int index, struct player *attacker) 
+{
+    if (!attacker->torpedoAvailable) {
+        printf("Torpedo not available yet! You must sink three ships first.\n");
+        return;
+    }
+
+    if (index < 0 || index >= 10) {
+        printf("Invalid index! You lose your turn.\n");
+        return;
+    }
+
+    int hit = 0;
+
+    if (type == 'R' || type == 'r') {
+        for (int j = 0; j < 10; j++) {
+            if (grid[index][j] > 0) {
+                grid[index][j] = HIT;
+                hit = 1;
+            } else if (grid[index][j] == WATER) {
+                grid[index][j] = MISS;
+            }
+        }
+    } else if (type == 'C' || type == 'c') {
+        for (int i = 0; i < 10; i++) {
+            if (grid[i][index] > 0) {
+                grid[i][index] = HIT;
+                hit = 1;
+            } else if (grid[i][index] == WATER) {
+                grid[i][index] = MISS;
+            }
+        }
+    } else {
+        printf("Invalid type! Use 'R' for row or 'C' for column.\n");
+        return;
+    }
+
+    if (hit) {
+        printf("Torpedo hit!\n");
+    } else {
+        printf("Torpedo missed!\n");
+    }
+
+    attacker->torpedoAvailable = 0;  // Reset after use
+}
 
 void printGrid(int **grid, int isOwner)
 {
