@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define WATER 0
 #define HIT -1
 #define MISS -2
-void DisplayRules()
 
 #ifdef _WIN32
 #include <windows.h>
@@ -45,7 +45,7 @@ void clear_terminal()
 #ifdef _WIN32
     system("cls"); // Windows
 #else
-    printf("\033[2J\033[H");
+    system("clear");
 #endif
 }
 
@@ -86,210 +86,341 @@ struct player
     int ships[6];
     int shipsRemaining;
     int **grid;
-    int radarCount; //Starts at 3
-    int availableScreens; //Increase by 1 per ship sunk
+    int radarCount;       // Starts at 3
+    int availableScreens; // Starts at 0, Increase by 1 per ship sunk
     int shipsSunk;
     int artilleryAvailable;
     int artilleryNextTurn;
     int torpedoAvailable;
 };
 
-
-void fire(int **grid, int ships[], int row, int col, struct player *attacker) 
+void fire(int **grid, int ships[], int row, int col, struct player *attacker)
 {
-    if (row < 0 || row >= 10 || col < 0 || col >= 10) {
-        printf("Invalid coordinates! You lose your turn :(\n");
+    attacker->torpedoAvailable = 0;
+    attacker->artilleryNextTurn = 0;
+    waitForMilliseconds(500); // Simulate time for action
+
+    if (row < 0 || row >= 10 || col < 0 || col >= 10)
+    {
+        printWithDelay("Invalid coordinates! You lose your turn :(\n", 25);
         return;
     }
 
-    if (grid[row][col] == HIT || grid[row][col] == MISS) {
-        printf("You already fired at this location!\n");
+    if (grid[row][col] == HIT || grid[row][col] == MISS)
+    {
+        printWithDelay("You already fired at this location!\n", 25);
         return;
     }
 
-    if (grid[row][col] == WATER) {
-        grid[row][col] = MISS;  
-        printf("Miss!\n");
+    if (grid[row][col] == WATER)
+    {
+        grid[row][col] = MISS;
+        printWithDelay("Miss!\n", 25);
         return;
     }
 
-    int shipID = grid[row][col];  
-    ships[shipID]--;  // Decrease health of the ship
-    grid[row][col] = HIT;  // Mark as HIT
+    int shipID = grid[row][col];
+    if (shipID > 10)
+    {
+        shipID /= 10;
+    }
+    // Validate shipID to avoid out-of-bounds access
+    if (shipID < 2 || shipID > 5)
+    {
+        printWithDelay("Invalid ship ID! Something went wrong.\n", 25);
+        return;
+    }
 
-    printf("Hit!\n");
+    // Decrement ship health
+    ships[shipID]--;
+    grid[row][col] = HIT;
 
-    if (ships[shipID] == 0) {
-        printf("You sunk the opponent's %s!\n", 
-               shipID == 2 ? "Submarine" : 
-               shipID == 3 ? "Destroyer" : 
-               shipID == 4 ? "Battleship" : "Carrier");
+    printWithDelay("Hit!\n", 25);
 
-        attacker->shipsSunk++;  // Track ships sunk
+    // Check if the ship is sunk
+    if (ships[shipID] == 0)
+    {
+        char message[50];
+        snprintf(message, sizeof(message), "You sunk the opponent's %s!\n",
+                 shipID == 2 ? "Submarine" : shipID == 3 ? "Destroyer"
+                                         : shipID == 4   ? "Battleship"
+                                                         : "Carrier");
+        printWithDelay(message, 25);
 
-        // Unlock Artillery for the next turn
-        attacker->artilleryNextTurn = 1;
+        attacker->shipsSunk++;           // Track the number of ships sunk
+        attacker->availableScreens++;    // Gain one smoke screen per ship sunk
+        attacker->artilleryNextTurn = 1; // Unlock artillery for the next turn
 
-        // Unlock Torpedo if 3 ships are sunk
-        if (attacker->shipsSunk == 3) {
+        // Unlock torpedo if 3 ships are sunk
+        if (attacker->shipsSunk == 3)
+        {
             attacker->torpedoAvailable = 1;
-            printf("Torpedo unlocked!\n");
+            printWithDelay("Torpedo unlocked!\n", 25);
         }
     }
 }
 
-void radar_sweep(int **grid, int row, int col, int *radarCount) 
+void radar_sweep(int **grid, int row, int col, struct player *attacker)
 {
-    if (*radarCount <= 0) {
-        printf("No radar sweeps remaining! You lose your turn.\n");
+    attacker->torpedoAvailable = 0;
+    attacker->artilleryNextTurn = 0;
+    waitForMilliseconds(500);
+
+    if (attacker->radarCount <= 0)
+    {
+        printWithDelay("No radar sweeps remaining! You lose your turn.\n", 25);
         return;
     }
 
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) {
-        printf("Invalid coordinates! You lose your turn.\n");
+    if (row < 0 || row >= 9 || col < 0 || col >= 9)
+    {
+        printWithDelay("Invalid coordinates! You lose your turn.\n", 25);
         return;
     }
 
     int found = 0;
-    for (int i = row; i < row + 2; i++) {
-        for (int j = col; j < col + 2; j++) {
+    for (int i = row; i < row + 2; i++)
+    {
+        for (int j = col; j < col + 2; j++)
+        {
             int cell = grid[i][j];
-            if (cell >= 2 && cell <= 5) {  // Check for a ship
+
+            // Check if the cell is under a smoke screen (values multiplied by 10)
+            if (cell % 10 == 0)
+                continue; // Skip smoke-screened cells
+
+            if (cell >= 2 && cell <= 5) // A ship part is detected
+            {
                 found = 1;
             }
         }
     }
 
-    if (found) {
-        printf("Enemy ships found!\n");
-    } else {
-        printf("No enemy ships found.\n");
+    if (found)
+    {
+        printWithDelay("Enemy ships found!\n", 25);
     }
-    (*radarCount)--;
+    else
+    {
+        printWithDelay("No enemy ships found.\n", 25);
+    }
+
+    attacker->radarCount--; // Decrease radar count
 }
 
-void smoke_screen(int **grid, int row, int col, int *availableScreens) 
+void smoke_screen(int **grid, int row, int col, struct player *attacker)
 {
-    if (*availableScreens <= 0) {
-        printf("No smoke screens available! You lose your turn.\n");
+    attacker->torpedoAvailable = 0;
+    attacker->artilleryNextTurn = 0;
+    waitForMilliseconds(500);
+
+    // Check if smoke screens are available
+    if (attacker->availableScreens <= 0)
+    {
+        printWithDelay("No smoke screens available! You lose your turn.\n", 25);
         return;
     }
 
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) {
-        printf("Invalid coordinates! You lose your turn.\n");
+    if (row < 0 || row >= 9 || col < 0 || col >= 9)
+    {
+        printWithDelay("Invalid coordinates! You lose your turn.\n", 25);
         return;
     }
 
-    for (int i = row; i < row + 2; i++) {
-        for (int j = col; j < col + 2; j++) {
-            grid[i][j] *= 10;  // Mark as protected
+    // Deploy smoke screen over a 2x2 area
+    for (int i = row; i < row + 2; i++)
+    {
+        for (int j = col; j < col + 2; j++)
+        {
+            grid[i][j] *= 10; // Mark the cell as protected by smoke
         }
     }
 
-    (*availableScreens)--;
-    system("clear || cls"); //Clear screen
-    printf("Smoke screen deployed! Your move is hidden.\n");
+    // Decrease the available smoke screens count
+    attacker->availableScreens--;
+
+    clear_terminal(); // Clear the screen to hide the move
+    printWithDelay("Smoke screen deployed! Your move is hidden.\n", 25);
 }
 
-void artillery(int **grid, int row, int col, struct player *opponent, struct player *attacker) 
+void artillery(int **grid, int row, int col, struct player *opponent, struct player *attacker)
 {
+    waitForMilliseconds(500); // Simulate artillery firing
     // Check if Artillery is available only for the next turn
-    if (!attacker->artilleryNextTurn) {
-        printf("Artillery not available! It was only available for the next turn after sinking a ship.\n");
+    if (!attacker->artilleryNextTurn)
+    {
+        printWithDelay("Artillery not available! It was only available for the next turn after sinking a ship.\n", 25);
         return;
     }
 
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) {
-        printf("Invalid coordinates! You lose your turn.\n");
+    attacker->torpedoAvailable = 0;
+    attacker->artilleryNextTurn = 0;
+    if (row < 0 || row >= 9 || col < 0 || col >= 9)
+    {
+        printWithDelay("Invalid coordinates! You lose your turn.\n", 25);
         return;
     }
 
-    int hit = 0; 
-    int *ships = opponent->ships;  
+    int hit = 0;
+    int *ships = opponent->ships;
 
-    for (int i = row; i < row + 2; i++) {
-        for (int j = col; j < col + 2; j++) {
-            if (grid[i][j] > 0) {  // A ship part is found
-                int shipID = grid[i][j];  
-                ships[shipID]--;  
-                grid[i][j] = HIT;  
+    for (int i = row; i < row + 2; i++)
+    {
+        for (int j = col; j < col + 2; j++)
+        {
+            if (grid[i][j] > 0)
+            { // A ship part is found
+                int shipID = grid[i][j];
+                if (shipID > 10)
+                {
+                    shipID /= 10;
+                }
+                ships[shipID]--;
+                grid[i][j] = HIT;
                 hit = 1;
 
-                if (ships[shipID] == 0) {
-                    printf("You sunk the opponent's %s!\n", 
-                           shipID == 2 ? "Submarine" : 
-                           shipID == 3 ? "Destroyer" : 
-                           shipID == 4 ? "Battleship" : "Carrier");
+                if (ships[shipID] == 0)
+                {
+                    char message[50];
+                    snprintf(message, sizeof(message), "You sunk the opponent's %s!\n",
+                             shipID == 2 ? "Submarine" : shipID == 3 ? "Destroyer"
+                                                     : shipID == 4   ? "Battleship"
+                                                                     : "Carrier");
+                    printWithDelay(message, 25);
 
-                    opponent->shipsRemaining--;  // Decrease ships 
-                    attacker->shipsSunk++;  // Increase  attacker's sunk ships
+                    opponent->shipsRemaining--; // Decrease ships
+                    attacker->shipsSunk++;      // Increase attacker's sunk ships
+                    attacker->artilleryNextTurn = 1;
+                    // Gain one smoke screen per ship sunk
+                    attacker->availableScreens++;
 
                     // Unlock Torpedo if this was the 3rd ship sunk
-                    if (attacker->shipsSunk == 3) {
+                    if (attacker->shipsSunk == 3)
+                    {
                         attacker->torpedoAvailable = 1;
-                        printf("Torpedo unlocked!\n");
+                        printWithDelay("Torpedo unlocked!\n", 25);
                     }
                 }
-            } else if (grid[i][j] == WATER) {
-                grid[i][j] = MISS;  
+            }
+            else if (grid[i][j] == WATER)
+            {
+                grid[i][j] = MISS;
             }
         }
     }
 
-    if (hit) {
-        printf("Artillery hit!\n");
-    } else {
-        printf("Artillery missed!\n");
+    if (hit)
+    {
+        printWithDelay("Artillery hit!\n", 25);
     }
-    // Reset the Artillery availability
-    attacker->artilleryNextTurn = 0;
+    else
+    {
+        printWithDelay("Artillery missed!\n", 25);
+    }
 }
 
-
-void torpedo(int **grid, char type, int index, struct player *attacker) 
+void torpedo(int **grid, char type, int index, struct player *attacker, struct player *opponent)
 {
-    if (!attacker->torpedoAvailable) {
-        printf("Torpedo not available yet! You must sink three ships first.\n");
+    waitForMilliseconds(500);
+
+    if (!attacker->torpedoAvailable)
+    {
+        printWithDelay("Torpedo not available! You can use torpedo right after sinking 3 ships \n", 25);
         return;
     }
+    attacker->torpedoAvailable = 0;
+    attacker->artilleryNextTurn = 0;
 
-    if (index < 0 || index >= 10) {
-        printf("Invalid index! You lose your turn.\n");
+    if (index < 0 || index >= 10)
+    {
+        printWithDelay("Invalid index! You lose your turn.\n", 25);
         return;
     }
 
     int hit = 0;
 
-    if (type == 'R' || type == 'r') {
-        for (int j = 0; j < 10; j++) {
-            if (grid[index][j] > 0) {
+    if (type == 'R' || type == 'r') // Row attack
+    {
+        for (int j = 0; j < 10; j++)
+        {
+            if (grid[index][j] > 0) // Ship part found
+            {
+                int shipID = grid[index][j];
+                if (shipID > 10)
+                {
+                    shipID /= 10;
+                }
+                opponent->ships[shipID]--;
                 grid[index][j] = HIT;
                 hit = 1;
-            } else if (grid[index][j] == WATER) {
+
+                if (opponent->ships[shipID] == 0) // Ship is sunk
+                {
+                    char message[50];
+                    snprintf(message, sizeof(message), "You sunk the opponent's %s!\n",
+                             shipID == 2 ? "Submarine" : shipID == 3 ? "Destroyer"
+                                                     : shipID == 4   ? "Battleship"
+                                                                     : "Carrier");
+                    printWithDelay(message, 25);
+                    opponent->shipsRemaining--;
+                    attacker->shipsSunk++;
+                    attacker->availableScreens++;
+                }
+            }
+            else if (grid[index][j] == WATER)
+            {
                 grid[index][j] = MISS;
             }
         }
-    } else if (type == 'C' || type == 'c') {
-        for (int i = 0; i < 10; i++) {
-            if (grid[i][index] > 0) {
+    }
+    else if (type == 'C' || type == 'c') // Column attack
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            if (grid[i][index] > 0) // Ship part found
+            {
+                int shipID = grid[i][index];
+                if (shipID > 10)
+                {
+                    shipID /= 10;
+                }
+                opponent->ships[shipID]--;
                 grid[i][index] = HIT;
                 hit = 1;
-            } else if (grid[i][index] == WATER) {
+
+                if (opponent->ships[shipID] == 0) // Ship is sunk
+                {
+                    char message[50];
+                    snprintf(message, sizeof(message), "You sunk the opponent's %s!\n",
+                             shipID == 2 ? "Submarine" : shipID == 3 ? "Destroyer"
+                                                     : shipID == 4   ? "Battleship"
+                                                                     : "Carrier");
+                    printWithDelay(message, 25);
+                    opponent->shipsRemaining--;
+                    attacker->shipsSunk++;
+                    attacker->availableScreens++;
+                }
+            }
+            else if (grid[i][index] == WATER)
+            {
                 grid[i][index] = MISS;
             }
         }
-    } else {
-        printf("Invalid type! Use 'R' for row or 'C' for column.\n");
+    }
+    else
+    {
+        printWithDelay("Invalid type! Use 'R' for row or 'C' for column.\n", 25);
         return;
     }
 
-    if (hit) {
-        printf("Torpedo hit!\n");
-    } else {
-        printf("Torpedo missed!\n");
+    if (hit)
+    {
+        printWithDelay("Torpedo hit!\n", 25);
     }
-
-    attacker->torpedoAvailable = 0;  // Reset after use
+    else
+    {
+        printWithDelay("Torpedo missed!\n", 25);
+    }
 }
 
 void printGrid(int **grid, int isOwner)
@@ -302,6 +433,7 @@ void printGrid(int **grid, int isOwner)
     printf("\n");
     for (int i = 0; i < 10; i++)
     {
+        waitForMilliseconds(50); // Subtle delay between rows
         if (i < 9)
         {
             printf("%d  ", i + 1);
@@ -312,11 +444,12 @@ void printGrid(int **grid, int isOwner)
         }
         for (int j = 0; j < 10; j++)
         {
-            if (grid[i][j] == 0)
+            int cellValue = grid[i][j];
+            if (cellValue == 0)
             {
                 printf(BLUE "~ " RESET_COLOR);
             }
-            else if (grid[i][j] > 0)
+            else if (cellValue > 0)
             {
                 if (isOwner)
                 {
@@ -327,13 +460,18 @@ void printGrid(int **grid, int isOwner)
                     printf(BLUE "~ " RESET_COLOR);
                 }
             }
-            else if (grid[i][j] == -1)
+            else if (cellValue == MISS)
             {
                 printf(YELLOW "O " RESET_COLOR);
             }
-            else if (grid[i][j] < -1)
+            else if (cellValue == HIT)
             {
                 printf(RED "X " RESET_COLOR);
+            }
+            else
+            {
+                // For smoke screens or other unknown values
+                printf(BLUE "~ " RESET_COLOR);
             }
         }
         printf("\n");
@@ -356,7 +494,7 @@ void DisplayRules()
     waitForMilliseconds(300);
     printWithDelay("\t\ta. Fire: hits a certain coordinate on the enemy grid\n", 25);
     waitForMilliseconds(300);
-    printWithDelay("\t\tb. Smoke Screen: protects a 2x2 area from the Radar Sweep\n", 25);
+    printWithDelay("\t\tb. Smoke Screen: protects a 2x2 area from the Radar Sweep (you earn one per ship sunk)\n", 25);
     waitForMilliseconds(300);
     printWithDelay("\t\tc. Radar Sweep: scans a 2x2 area for enemy ships (you are allowed ONLY 3 moves)\n", 25);
     waitForMilliseconds(300);
@@ -375,7 +513,7 @@ int addToGrid(int **grid, char x, int y, char orientation, int size)
 {
     if (x < 'A' || x > 'J' || y < 1 || y > 10 || !(orientation == 'V' || orientation == 'H'))
     {
-        printf("Input Error \n");
+        printWithDelay("Input Error\n", 25);
         return 0;
     }
 
@@ -386,14 +524,14 @@ int addToGrid(int **grid, char x, int y, char orientation, int size)
     {
         if (row + size > 10)
         {
-            printf("Out of bounds Error \n");
+            printWithDelay("Out of bounds Error\n", 25);
             return 0;
         }
         for (int i = 0; i < size; i++)
         {
             if (grid[row + i][col] != 0)
             {
-                printf("Overlap Error \n");
+                printWithDelay("Overlap Error\n", 25);
                 return 0;
             }
         }
@@ -406,14 +544,14 @@ int addToGrid(int **grid, char x, int y, char orientation, int size)
     {
         if (col + size > 10)
         {
-            printf("Out of bounds Error \n");
+            printWithDelay("Out of bounds Error\n", 25);
             return 0;
         }
         for (int i = 0; i < size; i++)
         {
             if (grid[row][col + i] != 0)
             {
-                printf("Overlap Error \n");
+                printWithDelay("Overlap Error\n", 25);
                 return 0;
             }
         }
@@ -427,20 +565,22 @@ int addToGrid(int **grid, char x, int y, char orientation, int size)
 
 void gridsetup(struct player *p)
 {
-    char *names[6] = {"", "", "submarine", "destroyer", "battleship", "carrier"};
+    char *names[6] = {"", "", "Submarine", "Destroyer", "Battleship", "Carrier"};
     for (int i = 5; i >= 2; i--)
     {
         char X;
         int Y;
         char HV;
         printGrid(p->grid, 1);
-        printf("Where do you want to place the %s (size %d)?\n", names[i], i);
+        char prompt[100];
+        snprintf(prompt, sizeof(prompt), "Where do you want to place the %s (size %d)?\n", names[i], i);
+        printWithDelay(prompt, 25);
         if (scanf(" %c %d %c", &X, &Y, &HV) != 3)
         {
             while (getchar() != '\n')
                 ;
             clear_terminal();
-            printf("Invalid Input \n ");
+            printWithDelay("Invalid Input\n", 25);
             i++;
             continue;
         }
@@ -452,7 +592,19 @@ void gridsetup(struct player *p)
     }
 }
 
-void getAndPerformMove(struct player player1, struct player player2, int turn)
+int didLose(struct player *plr)
+{
+    for (int i = 2; i <= 5; i++)
+    {
+        if (plr->ships[i] > 0)
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+void getAndPerformMove(struct player *player1, struct player *player2, int turn)
 {
     while (1)
     {
@@ -460,54 +612,101 @@ void getAndPerformMove(struct player player1, struct player player2, int turn)
         char X;
         int Y;
         char HV;
-        printf("%s pick a move (1: Fire/ 2: SmokeScreen/ 3: RadarSweep/ 4: Artillery/ 5: Torpedo) \n", turn ? player1.name : player2.name);
+        struct player *currentPlayer = turn ? player1 : player2;
+        struct player *opponentPlayer = turn ? player2 : player1;
+        char prompt[100];
+        snprintf(prompt, sizeof(prompt), "%s, pick a move (1: Fire/ 2: Smoke Screen/ 3: Radar Sweep/ 4: Artillery/ 5: Torpedo)\n", currentPlayer->name);
+        printWithDelay(prompt, 25);
         if (scanf(" %d", &choice) != 1)
         {
-            printf("Invalid input \n");
+            printWithDelay("Invalid input\n", 25);
             // Clear the input buffer
             while (getchar() != '\n')
                 ; // Discards the remaining characters until newline
 
             continue;
         }
+        clear_terminal();
         if (choice == 5)
         {
-            printGrid(turn ? player2.grid : player1.grid, 0);
-            printf("Pick your Coordinates and Orientation: \n");
-            scanf(" %c %d %c", &X, &Y, &HV);
-            // torpedo(player2.grid, y - 1, (int) (X - 'A'), HV);
+            printGrid(opponentPlayer->grid, 0);
+            printWithDelay("Pick your Coordinates and Type (R for row/C for column): \n", 25);
+            if (scanf(" %c %d %c", &X, &Y, &HV) != 3)
+            {
+                printWithDelay("Invalid input\n", 25);
+                while (getchar() != '\n')
+                    ;
+                continue;
+            }
+            int index = (HV == 'R' || HV == 'r') ? Y - 1 : X - 'A';
+            while (getchar() != '\n')
+                ;
+            torpedo(opponentPlayer->grid, HV, index, currentPlayer, opponentPlayer);
         }
         else if (choice == 4)
         {
-            printGrid(turn ? player2.grid : player1.grid, 0);
-            printf("Pick your Coordinates: \n");
-            scanf(" %c %d", &X, &Y);
-            // artillery(player2.grid, y - 1, (int) (X - 'A'));
+            printGrid(opponentPlayer->grid, 0);
+            printWithDelay("Pick your Coordinates (e.g., B 3): \n", 25);
+            if (scanf(" %c %d", &X, &Y) != 2)
+            {
+                printWithDelay("Invalid input\n", 25);
+                while (getchar() != '\n')
+                    ;
+                continue;
+            }
+            while (getchar() != '\n')
+                ;
+            artillery(opponentPlayer->grid, Y - 1, X - 'A', opponentPlayer, currentPlayer);
         }
         else if (choice == 3)
         {
-            printGrid(turn ? player2.grid : player1.grid, 0);
-            printf("Pick your Coordinates: \n");
-            scanf(" %c %d", &X, &Y);
-            // radar_sweep(player2.grid, y -1, (int) (X - 'A'));
+            printGrid(opponentPlayer->grid, 0);
+            printWithDelay("Pick your Coordinates (e.g., B 3): \n", 25);
+            if (scanf(" %c %d", &X, &Y) != 2)
+            {
+                printWithDelay("Invalid input\n", 25);
+                while (getchar() != '\n')
+                    ;
+                continue;
+            }
+            while (getchar() != '\n')
+                ;
+            radar_sweep(opponentPlayer->grid, Y - 1, X - 'A', currentPlayer);
         }
         else if (choice == 2)
         {
-            printGrid(turn ? player1.grid : player2.grid, 1);
-            printf("Pick your Coordinates: \n");
-            scanf(" %c %d", &X, &Y);
-            // smoke_screen(player1.grid, y -1, (int) (X - 'A'));
+            printGrid(currentPlayer->grid, 1);
+            printWithDelay("Pick your Coordinates (e.g., B 3): \n", 25);
+            if (scanf(" %c %d", &X, &Y) != 2)
+            {
+                printWithDelay("Invalid input\n", 25);
+                while (getchar() != '\n')
+                    ;
+                continue;
+            }
+            while (getchar() != '\n')
+                ;
+            smoke_screen(currentPlayer->grid, Y - 1, X - 'A', currentPlayer);
         }
         else if (choice == 1)
         {
-            printGrid(turn ? player2.grid : player1.grid, 0);
-            printf("Pick your Coordinates: \n");
-            scanf(" %c %d", &X, &Y);
-            // fire(player2.grid, y -1, (int)(X - 'A'));
+            printGrid(opponentPlayer->grid, 0);
+            printWithDelay("Pick your Coordinates (e.g., B 3): \n", 25);
+            if (scanf(" %c %d", &X, &Y) != 2)
+            {
+                printWithDelay("Invalid input\n", 25);
+                while (getchar() != '\n')
+                    ;
+                continue;
+            }
+            while (getchar() != '\n')
+                ;
+
+            fire(opponentPlayer->grid, opponentPlayer->ships, Y - 1, X - 'A', currentPlayer);
         }
         else
         {
-            printf("Invalid Input \n");
+            printWithDelay("Invalid Input\n", 25);
             continue;
         }
         break;
@@ -516,51 +715,90 @@ void getAndPerformMove(struct player player1, struct player player2, int turn)
 
 void StartLocalGame()
 {
-    char *ptrname1 = (char *)malloc(sizeof(char) * 20);
-    printf("Please enter your name (0 - 20 characters)\n");
-    scanf("%19s", ptrname1);
-    printf("Welcome to the game %s!\n", ptrname1);
-    char *ptrname2 = (char *)malloc(sizeof(char) * 20);
-    printf("Please enter your name (0 - 20 characters)\n");
-    scanf("%19s", ptrname2);
-    printf("Welcome to the game %s!\n", ptrname2);
+    char *ptrname1 = (char *)malloc(sizeof(char) * 21);
+    printWithDelay("Player 1, please enter your name (0 - 20 characters)\n", 25);
+    scanf("%20s", ptrname1);
+    char welcomeMsg[200]; // Increased size to accommodate longer messages
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome to the game, %s!\n", ptrname1);
+    printWithDelay(welcomeMsg, 25);
+    waitForMilliseconds(500);
 
-    struct player player1 = {ptrname1, {0, 0, 2, 3, 4, 5}, 4, allocate()};
-    struct player player2 = {ptrname2, {0, 0, 2, 3, 4, 5}, 4, allocate()};
+    char *ptrname2 = (char *)malloc(sizeof(char) * 21);
+    printWithDelay("Player 2, please enter your name (0 - 20 characters)\n", 25);
+    scanf("%20s", ptrname2);
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome to the game, %s!\n", ptrname2);
+    printWithDelay(welcomeMsg, 25);
+    waitForMilliseconds(500);
+
+    struct player player1 = {ptrname1, {0, 0, 2, 3, 4, 5}, 4, allocate(), 3, 0, 0, 0, 0};
+    struct player player2 = {ptrname2, {0, 0, 2, 3, 4, 5}, 4, allocate(), 3, 0, 0, 0, 0};
 
     // PLAYER 1 SHIP PLACEMENT
-    printf("Welcome %s.\nNow you have to place your ships on this 10X10 grid using this coordinate system:\n", ptrname1);
-    printf("For placing ships, choose X Y H/V (e.g., B 3 H for cell B3 horizontally)\n");
+    clear_terminal();
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome %s.\nNow you have to place your ships on this 10X10 grid using this coordinate system:\n", ptrname1);
+    printWithDelay(welcomeMsg, 25);
+    printWithDelay("For placing ships, choose X Y H/V (e.g., B 3 H for cell B3 horizontally)\n", 25);
+    waitForMilliseconds(500); // Add a short delay before proceeding
     gridsetup(&player1);
 
     clear_terminal();
     // PLAYER 2 SHIP PLACEMENT
-    printf("Welcome %s.\nNow you have to place your ships on this 10X10 grid using this coordinate system:\n", ptrname2);
-    printf("For placing ships, choose X Y H/V (e.g., B 3 H for cell B3 horizontally)\n");
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome %s.\nNow you have to place your ships on this 10X10 grid using this coordinate system:\n", ptrname2);
+    printWithDelay(welcomeMsg, 25);
+    printWithDelay("For placing ships, choose X Y H/V (e.g., B 3 H for cell B3 horizontally)\n", 25);
+    waitForMilliseconds(500); // Add a short delay before proceeding
     gridsetup(&player2);
     clear_terminal();
 
-    printf("Now let the games begin \n");
-    int turn = 1;
-    while (player1.shipsRemaining > 0 && player2.shipsRemaining > 0)
+    printWithDelay("Now let the games begin!\n", 25);
+    waitForMilliseconds(500);
+
+    // Randomly select the starting player
+    int turn = rand() % 2; // turn will be 0 or 1
+
+    if (turn)
     {
-        getAndPerformMove(player1, player2, turn);
+        snprintf(welcomeMsg, sizeof(welcomeMsg), "%s will start the game.\n", player1.name);
+    }
+    else
+    {
+        snprintf(welcomeMsg, sizeof(welcomeMsg), "%s will start the game.\n", player2.name);
+    }
+    printWithDelay(welcomeMsg, 25);
+    waitForMilliseconds(500);
+
+    while (!didLose(&player1) && !didLose(&player2))
+    {
+        getAndPerformMove(&player1, &player2, turn);
+        printWithDelay("Press Enter to end your turn...", 25);
+        getchar();
         clear_terminal();
         turn = ((turn + 1) % 2);
     }
-    printf("Congrats %s You Won! \n", player1.shipsRemaining == 0 ? player2.name : player1.name);
-    printf("Thank You For Playing\n");
+    char congratsMsg[50];
+    snprintf(congratsMsg, sizeof(congratsMsg), "Congrats %s! You won!\n", didLose(&player1) ? player2.name : player1.name);
+    printWithDelay(congratsMsg, 25);
+    printWithDelay("Thank you for playing!\n", 25);
+
+    free(ptrname1);
+    free(ptrname2);
+    for (int i = 0; i < 10; i++)
+    {
+        free(player1.grid[i]);
+        free(player2.grid[i]);
+    }
+    free(player1.grid);
+    free(player2.grid);
 }
 
 void InitializeGame()
 {
-    printf("Welcome To BattleShip (But the better one)\n");
-    printf("\n");
+    printWithDelay("Welcome To BattleShip \n\n", 25);
     char choice;
     char secondchoice;
     loadingAnimation();
     printWithDelay("Main Menu:\nPlay Game (Enter 0)\nGame Rules (Enter 1)\nExit Game (Enter 2)\n", 25);
-    scanf(" %c", &choice); // Added space before %c
+    scanf(" %c", &choice);
     if (choice == '0')
     {
         waitForMilliseconds(300);
@@ -582,7 +820,7 @@ void InitializeGame()
         }
         else
         {
-            printf("Invalid Choice, choose either 0 or b\n");
+            printWithDelay("Invalid Choice, choose either 0 or b\n", 25);
             InitializeGame();
             return;
         }
@@ -596,11 +834,12 @@ void InitializeGame()
     }
     else if (choice == '2')
     {
+        printWithDelay("Exiting the game. Goodbye!\n", 25);
         return;
     }
     else
     {
-        printf("Invalid Choice, choose either 0 or 1 or 2 \n");
+        printWithDelay("Invalid Choice, choose either 0 or 1 or 2\n", 25);
         InitializeGame();
         return;
     }
@@ -608,6 +847,7 @@ void InitializeGame()
 
 int main()
 {
+    srand(time(NULL));
     InitializeGame();
     return 0;
 }
