@@ -1,7 +1,7 @@
-Phase 1:
+Phase 1: 
 For the first phase we will divide this phase into 2 different phase: 
 
-- Phase 1.1: Which will be done by Ali Mohsen and Suleiman Jaber.
+- Phase 1.1: Which will be done by Ali Mohsen and Suleiman Jaber. (Done)
 	Phase 1.1 Includes:
 		- Main Menu
 		- Grid Setup and Rules
@@ -24,13 +24,13 @@ The entire team will firstly focus on the Grid Logic as it is the basis to both 
 GRID LOGIC: 
  The Grid is a matrix of integers, every integer has its own meaning. Below are the integers and their corresponding state:
 	0 --> Water 
-	2 --> Ship size 2
+  2 --> Ship size 2
 	3 --> Ship size 3
 	4 --> Ship size 4
 	5 --> Ship size 5
+	-1 --> Hit (Square had a ship) (Smoke screen ignores hit squares)
+	-2 --> Miss (Square was hit but there was water)
 	x10 --> Protected Square (Smoke Screen Effect)
-	-size --> Hit (Square had a ship) (Smoke screen ignores hit squares)
-	-1 --> Miss (Square was hit but there was water)
 
 PHASE 1.2 PLAN: (By Mohammad and Ghanem)
 
