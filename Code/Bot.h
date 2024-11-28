@@ -1,9 +1,10 @@
+
 #ifndef BOT_H
 #define BOT_H
 
-// int** Generate probability grid (int isTargeter, int** currentGridState) --> Returns the main proba grid
-int **generateProbabilityGrid(int isTargeter, int **currentGrid);
-// int[] Pick and Attack (int** probabilityGrid) --> Returns an array first element being the move second element being the cooredinate
-// int** Place Ships() --> Returns A grid with ships
+int **generateProbabilityGrid(int isTargeter, int **currentGrid, int ships[6]);
+
+// int** placeShips() --> Returns a full grid with the placed ships
+// int[3] ChooseAndAttack() --> Returns the move picked and its corresponding coordinates
 
 #endif
