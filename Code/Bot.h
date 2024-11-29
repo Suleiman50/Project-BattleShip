@@ -1,16 +1,28 @@
-
 #ifndef BOT_H
 #define BOT_H
 
+#include "BattleShip.h"  // Include BattleShip.h for struct player and shared function declarations
+
+// Function to generate the probability grid for the bot's targeting
 int **generateProbabilityGrid(int isTargeter, int **currentGrid, int ships[6]);
+
+// Function to generate a random name for the bot
 char *generateBotName();
-// void placeShips(*player) --> Takes the botPlayer class & places ships for the bot
-// void PerformBotMove(*player, *botPlayer) --> Performs the move by following the below steps
-/*
-    1- pick between the 5 moves based on the decider
-    2- update the grid by using the generateProbabilityGrid() function (unless move is SmokeScreen)
-    3- perform selected move based on the ProbabilityGrid
-    4- call correct Modified Move Function depending on the move (modify move functions from BattleShip.c)
-*/
+
+// Function to place ships for the bot on the grid
+void placeShips(struct player *botPlayer);
+
+// Function to perform a bot move (decides and performs the best move)
+void performBotMove(struct player *player, struct player *botPlayer);
+
+// Bot-specific move functions
+void BotFire(int **grid, int ships[], int row, int col, struct player *attacker, struct player *defender);
+void BotRadarSweep(int **grid, int row, int col, struct player *attacker, struct player *defender);
+void BotSmokeScreen(int **grid, int row, int col, struct player *attacker);
+void BotArtillery(int **grid, int row, int col, struct player *attacker, struct player *defender);
+void BotTorpedo(int **grid, char type, int index, struct player *attacker, struct player *defender);
+
+// Utility function to determine if radar sweep should be used
+int shouldUseRadar(int **probabilityGrid);
 
 #endif

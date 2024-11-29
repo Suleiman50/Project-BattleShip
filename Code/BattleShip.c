@@ -88,20 +88,6 @@ int **allocate()
     return grid;
 }
 
-struct player
-{
-    char *name;
-    int ships[6];
-    int shipsRemaining;
-    int **grid;
-    int radarCount;       // Starts at 3
-    int availableScreens; // Starts at 0, Increase by 1 per ship sunk
-    int shipsSunk;
-    int artilleryAvailable;
-    int artilleryNextTurn;
-    int torpedoAvailable;
-};
-
 void fire(int **grid, int ships[], int row, int col, struct player *attacker)
 {
     attacker->torpedoAvailable = 0;
@@ -801,44 +787,50 @@ void StartLocalGame()
 
 void StartBotGame()
 {
+    // Step 1: Get the player's name
     char *ptrname1 = (char *)malloc(sizeof(char) * 21);
-    printWithDelay("Player 1, please enter your name (0 - 20 characters)\n", 25);
+    printWithDelay("Player 1, please enter your name (0 - 20 characters): ", 25);
     scanf("%20s", ptrname1);
     char welcomeMsg[200];
     snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome to the game, %s!\n", ptrname1);
     printWithDelay(welcomeMsg, 25);
     waitForMilliseconds(500);
+
+    // Step 2: Generate a name for the bot
     char *botName = generateBotName();
     loadingAnimation("Matchmaking");
     waitForMilliseconds(500);
-    snprintf(welcomeMsg, sizeof(welcomeMsg), "%s will be your opponent! \n", botName);
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "%s will be your opponent!\n", botName);
     printWithDelay(welcomeMsg, 25);
 
+    // Step 3: Initialize player and bot
     struct player player1 = {ptrname1, {0, 0, 2, 3, 4, 5}, 4, allocate(), 3, 0, 0, 0, 0};
     struct player player2 = {botName, {0, 0, 2, 3, 4, 5}, 4, allocate(), 3, 0, 0, 0, 0};
 
-    // PLAYER SHIP PLACEMENT
+    // Step 4: Player places their ships
     clear_terminal();
-    snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome %s.\nNow you have to place your ships on this 10X10 grid using this coordinate system:\n", ptrname1);
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome %s.\nNow you have to place your ships on this 10x10 grid.\n", ptrname1);
     printWithDelay(welcomeMsg, 25);
     printWithDelay("For placing ships, choose X Y H/V (e.g., B 3 H for cell B3 horizontally)\n", 25);
     waitForMilliseconds(500);
-    gridsetup(&player1);
+    gridsetup(&player1);  // Player ship placement
 
+    // Step 5: Bot places its ships
     clear_terminal();
     waitForMilliseconds(500);
-    snprintf(welcomeMsg, sizeof(welcomeMsg), "%s is placing the ships \n", botName);
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "%s is placing the ships.\n", botName);
     printWithDelay(welcomeMsg, 25);
     waitForMilliseconds(750);
     loadingAnimation("Placing Ships");
-    // placeShips(&player2);
+    placeShips(&player2);  // Bot ship placement
     clear_terminal();
 
+    // Step 6: Announce game start
     printWithDelay("Now let the games begin!\n", 25);
     waitForMilliseconds(500);
 
-    // Randomly select the starting player
-    int turn = rand() % 2; // turn will be 0 or 1
+    // Step 7: Randomly choose who starts the game
+    int turn = rand() % 2;  // Randomly determine who goes first
 
     if (turn)
     {
@@ -851,21 +843,26 @@ void StartBotGame()
     printWithDelay(welcomeMsg, 25);
     waitForMilliseconds(500);
 
+    // Step 8: Main game loop
     while (!didLose(&player1) && !didLose(&player2))
     {
         if (turn == 1)
         {
+            // Player's move
             getAndPerformMove(&player1, &player2, turn);
             printWithDelay("Press Enter to end your turn...", 25);
             getchar();
         }
         else
         {
-            // performBotMove(&player1, &player2);
+            // Bot's move
+            performBotMove(&player1, &player2);
         }
-        clear_terminal();
-        turn = ((turn + 1) % 2);
+        clear_terminal();  // Clear screen for next turn
+        turn = ((turn + 1) % 2);  // Alternate turns
     }
+
+    // Step 9: End the game and announce the winner
     char congratsMsg[50];
     if (didLose(&player1))
     {
@@ -875,13 +872,22 @@ void StartBotGame()
     {
         snprintf(congratsMsg, sizeof(congratsMsg), "You Lost!\n");
     }
-
     printWithDelay(congratsMsg, 25);
     printWithDelay("Thank you for playing!\n", 25);
 
+    // Step 10: Clean up dynamically allocated memory
     free(botName);
     free(ptrname1);
+    for (int i = 0; i < 10; i++)
+    {
+        free(player1.grid[i]);
+        free(player2.grid[i]);
+    }
+    free(player1.grid);
+    free(player2.grid);
 }
+
+
 void InitializeGame()
 {
     printWithDelay("Welcome To BattleShip \n\n", 25);
