@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
+#include "Bot.h"
 
 #define WATER 0
 #define HIT -1
@@ -19,7 +21,7 @@
 #define YELLOW "\033[33m"
 #define GREEN "\033[32m"
 
-// Accurate wait function in milliseconds
+// Wait function in milliseconds
 void waitForMilliseconds(int milliseconds)
 {
 #ifdef _WIN32
@@ -40,6 +42,7 @@ void printWithDelay(const char *text, int delayMilliseconds)
     }
 }
 
+// Clearing Terminal Function
 void clear_terminal()
 {
 #ifdef _WIN32
@@ -49,10 +52,14 @@ void clear_terminal()
 #endif
 }
 
-void loadingAnimation()
+// Custom Loading Animation Function
+void loadingAnimation(char *text)
 {
-    const char *loadingText = "Loading";
-    printf("%s", loadingText);
+
+    char message[100];
+    snprintf(message, sizeof(message), "%s", text);
+    printWithDelay(message, 45);
+    waitForMilliseconds(50);
     fflush(stdout);
     for (int i = 0; i < 3; i++)
     {
@@ -63,6 +70,7 @@ void loadingAnimation()
     printf("\n");
 }
 
+// Memory Allocation
 int **allocate()
 {
     int **grid = (int **)malloc(10 * sizeof(int *));
@@ -718,7 +726,7 @@ void StartLocalGame()
     char *ptrname1 = (char *)malloc(sizeof(char) * 21);
     printWithDelay("Player 1, please enter your name (0 - 20 characters)\n", 25);
     scanf("%20s", ptrname1);
-    char welcomeMsg[200]; // Increased size to accommodate longer messages
+    char welcomeMsg[200];
     snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome to the game, %s!\n", ptrname1);
     printWithDelay(welcomeMsg, 25);
     waitForMilliseconds(500);
@@ -738,7 +746,7 @@ void StartLocalGame()
     snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome %s.\nNow you have to place your ships on this 10X10 grid using this coordinate system:\n", ptrname1);
     printWithDelay(welcomeMsg, 25);
     printWithDelay("For placing ships, choose X Y H/V (e.g., B 3 H for cell B3 horizontally)\n", 25);
-    waitForMilliseconds(500); // Add a short delay before proceeding
+    waitForMilliseconds(500);
     gridsetup(&player1);
 
     clear_terminal();
@@ -746,7 +754,7 @@ void StartLocalGame()
     snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome %s.\nNow you have to place your ships on this 10X10 grid using this coordinate system:\n", ptrname2);
     printWithDelay(welcomeMsg, 25);
     printWithDelay("For placing ships, choose X Y H/V (e.g., B 3 H for cell B3 horizontally)\n", 25);
-    waitForMilliseconds(500); // Add a short delay before proceeding
+    waitForMilliseconds(500);
     gridsetup(&player2);
     clear_terminal();
 
@@ -791,12 +799,95 @@ void StartLocalGame()
     free(player2.grid);
 }
 
+void StartBotGame()
+{
+    char *ptrname1 = (char *)malloc(sizeof(char) * 21);
+    printWithDelay("Player 1, please enter your name (0 - 20 characters)\n", 25);
+    scanf("%20s", ptrname1);
+    char welcomeMsg[200];
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome to the game, %s!\n", ptrname1);
+    printWithDelay(welcomeMsg, 25);
+    waitForMilliseconds(500);
+    char *botName = generateBotName();
+    loadingAnimation("Matchmaking");
+    waitForMilliseconds(500);
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "%s will be your opponent! \n", botName);
+    printWithDelay(welcomeMsg, 25);
+
+    struct player player1 = {ptrname1, {0, 0, 2, 3, 4, 5}, 4, allocate(), 3, 0, 0, 0, 0};
+    struct player player2 = {botName, {0, 0, 2, 3, 4, 5}, 4, allocate(), 3, 0, 0, 0, 0};
+
+    // PLAYER SHIP PLACEMENT
+    clear_terminal();
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome %s.\nNow you have to place your ships on this 10X10 grid using this coordinate system:\n", ptrname1);
+    printWithDelay(welcomeMsg, 25);
+    printWithDelay("For placing ships, choose X Y H/V (e.g., B 3 H for cell B3 horizontally)\n", 25);
+    waitForMilliseconds(500);
+    gridsetup(&player1);
+
+    clear_terminal();
+    waitForMilliseconds(500);
+    snprintf(welcomeMsg, sizeof(welcomeMsg), "%s is placing the ships \n", botName);
+    printWithDelay(welcomeMsg, 25);
+    waitForMilliseconds(750);
+    loadingAnimation("Placing Ships");
+    // placeShips(&player2);
+    clear_terminal();
+
+    printWithDelay("Now let the games begin!\n", 25);
+    waitForMilliseconds(500);
+
+    // Randomly select the starting player
+    int turn = rand() % 2; // turn will be 0 or 1
+
+    if (turn)
+    {
+        snprintf(welcomeMsg, sizeof(welcomeMsg), "%s will start the game.\n", player1.name);
+    }
+    else
+    {
+        snprintf(welcomeMsg, sizeof(welcomeMsg), "%s will start the game.\n", player2.name);
+    }
+    printWithDelay(welcomeMsg, 25);
+    waitForMilliseconds(500);
+
+    while (!didLose(&player1) && !didLose(&player2))
+    {
+        if (turn == 1)
+        {
+            getAndPerformMove(&player1, &player2, turn);
+            printWithDelay("Press Enter to end your turn...", 25);
+            getchar();
+        }
+        else
+        {
+            // performBotMove(&player1, &player2);
+        }
+        clear_terminal();
+        turn = ((turn + 1) % 2);
+    }
+    char congratsMsg[50];
+    if (didLose(&player1))
+    {
+        snprintf(congratsMsg, sizeof(congratsMsg), "Congrats! You won!\n");
+    }
+    else
+    {
+        snprintf(congratsMsg, sizeof(congratsMsg), "You Lost!\n");
+    }
+
+    printWithDelay(congratsMsg, 25);
+    printWithDelay("Thank you for playing!\n", 25);
+
+    free(botName);
+    free(ptrname1);
+}
 void InitializeGame()
 {
     printWithDelay("Welcome To BattleShip \n\n", 25);
     char choice;
     char secondchoice;
-    loadingAnimation();
+    loadingAnimation("Loading");
     printWithDelay("Main Menu:\nPlay Game (Enter 0)\nGame Rules (Enter 1)\nExit Game (Enter 2)\n", 25);
     scanf(" %c", &choice);
     if (choice == '0')
@@ -804,13 +895,18 @@ void InitializeGame()
         waitForMilliseconds(300);
         printWithDelay("Local Game (Enter 0)\n", 25);
         waitForMilliseconds(200);
-        printWithDelay("Vs CPU Game (Coming Soon...)\n", 25); // Teaser for phase 2
+        printWithDelay("Vs CPU Game (Enter 1)\n", 25);
         waitForMilliseconds(200);
         printWithDelay("Back (Enter b)\n", 25);
         scanf(" %c", &secondchoice);
         if (secondchoice == '0')
         {
             StartLocalGame();
+            return;
+        }
+        else if (secondchoice == '1')
+        {
+            StartBotGame();
             return;
         }
         else if (secondchoice == 'b')
