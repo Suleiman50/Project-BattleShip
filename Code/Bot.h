@@ -1,10 +1,10 @@
 #ifndef BOT_H
 #define BOT_H
 
-#include "BattleShip.h"  // Include BattleShip.h for struct player and shared function declarations
+#include "BattleShip.h" // Include BattleShip.h for struct player and shared function declarations
 
 // Function to generate the probability grid for the bot's targeting
-int **generateProbabilityGrid(int isTargeter, int **currentGrid, int ships[6]);
+int **generateProbabilityGrid(int **currentGrid, int ships[6]);
 
 // Function to generate a random name for the bot
 char *generateBotName();

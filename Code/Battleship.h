@@ -1,20 +1,19 @@
 #ifndef BATTLESHIP_H
 #define BATTLESHIP_H
 
-#include "Bot.h"  // Include Bot.h for bot functions
-
 // struct player definition
-struct player {
-    char *name;                 
-    int ships[6];               
-    int shipsRemaining;         
-    int **grid;                 
-    int radarCount;             
-    int availableScreens;       
-    int shipsSunk;              
-    int artilleryAvailable;     
-    int artilleryNextTurn;      
-    int torpedoAvailable;       
+struct player
+{
+    char *name;
+    int ships[6];
+    int shipsRemaining;
+    int **grid;
+    int radarCount;
+    int availableScreens;
+    int shipsSunk;
+    int artilleryAvailable;
+    int artilleryNextTurn;
+    int torpedoAvailable;
 };
 
 // General function declarations (for both player and bot)

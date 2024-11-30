@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
+#include <omp.h>
 #include "Bot.h"
 #include "BattleShip.h"
 
@@ -12,6 +13,21 @@
 #define MAX_NAME_LENGTH 100
 #define MAX_NAMES 500
 
+int **playerCopyGrid;
+
+// Structure to represent a possible ship location
+typedef struct
+{
+    int shipSize;           // Size of the ship
+    int row;                // Starting row
+    int col;                // Starting column
+    int orientation;        // 0 for horizontal, 1 for vertical
+    int shipIndex;          // Index of the ship (0 to numShips - 1)
+    int locationIndex;      // Index in the possible locations array
+    int occupiedSquares[5]; // List of squares occupied by the ship (max size 5)
+} ShipLocation;
+
+// Function to generate a random bot name from a file
 char *generateBotName()
 {
     FILE *file = fopen("names.txt", "r");
@@ -22,12 +38,10 @@ char *generateBotName()
     }
 
     char names[MAX_NAMES][MAX_NAME_LENGTH];
-    // Array of Names
     int count = 0;
 
     while (fgets(names[count], MAX_NAME_LENGTH, file) != NULL && count < MAX_NAMES)
     {
-        // Remove the newline character at the end if present
         size_t len = strlen(names[count]);
         if (len > 0 && names[count][len - 1] == '\n')
         {
@@ -44,13 +58,10 @@ char *generateBotName()
         return NULL;
     }
 
-    // Seed the random number generator
     srand(time(NULL));
 
-    // Generate a random index
     int randomIndex = rand() % count;
 
-    // Allocate memory for the selected name
     char *selectedName = malloc(strlen(names[randomIndex]) + 1);
     if (selectedName == NULL)
     {
@@ -58,11 +69,12 @@ char *generateBotName()
         return NULL;
     }
 
-    // Copy the selected name into the allocated memory
     strcpy(selectedName, names[randomIndex]);
 
     return selectedName;
 }
+
+// Function to allocate memory for a 10x10 grid and initialize it to zeros
 int **allocateMem()
 {
     int **grid = (int **)malloc(10 * sizeof(int *));
@@ -77,7 +89,8 @@ int **allocateMem()
     return grid;
 }
 
-int **generateProbabilityGrid(int isTargeter, int **currentGrid, int ships[6])
+// less powerful version of the probability Grid generation
+int **generateProbabilityGridSlidingWindow(int isTargeter, int **currentGrid, int ships[6])
 {
     int **finalGrid = allocateMem();
 
@@ -176,16 +189,291 @@ int **generateProbabilityGrid(int isTargeter, int **currentGrid, int ships[6])
     return finalGrid;
 }
 
+// Helper function to generate all possible ship locations for the remaining ships
+void generatePossibleShipLocations(int **grid, int shipSizes[], int numShips,
+                                   ShipLocation *possibleShipLocations[], int numPossibleShipLocations[])
+{
+    for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
+    {
+        int size = shipSizes[shipIndex];
+        int capacity = 200; // Initial capacity for possible locations
+        possibleShipLocations[shipIndex] = malloc(capacity * sizeof(ShipLocation));
+        numPossibleShipLocations[shipIndex] = 0;
+
+        // Iterate over all cells in the grid
+        for (int row = 0; row < 10; row++)
+        {
+            for (int col = 0; col < 10; col++)
+            {
+                // Try both horizontal and vertical orientations
+                for (int orientation = 0; orientation < 2; orientation++)
+                {
+                    // Check if the ship would overhang the board
+                    if (orientation == 0 && col + size > 10)
+                        continue;
+                    if (orientation == 1 && row + size > 10)
+                        continue;
+
+                    int overlapMiss = 0; // Flag to check overlap with MISS squares
+                    int occupiedSquares[5];
+                    int coversAllHits = 1; // Flag to ensure ship covers all HIT squares
+
+                    // Check each square the ship would occupy
+                    for (int k = 0; k < size; k++)
+                    {
+                        int r = row + (orientation == 1 ? k : 0);
+                        int c = col + (orientation == 0 ? k : 0);
+
+                        if (grid[r][c] == MISS)
+                        {
+                            overlapMiss = 1; // Cannot place ship here
+                            break;
+                        }
+
+                        occupiedSquares[k] = r * 10 + c; // Convert 2D index to 1D
+                    }
+
+                    if (overlapMiss)
+                        continue; // Skip to next position
+
+                    // Add this ship location to the list
+                    if (numPossibleShipLocations[shipIndex] >= capacity)
+                    {
+                        capacity *= 2;
+                        possibleShipLocations[shipIndex] = realloc(possibleShipLocations[shipIndex],
+                                                                   capacity * sizeof(ShipLocation));
+                    }
+
+                    ShipLocation loc;
+                    loc.shipSize = size;
+                    loc.row = row;
+                    loc.col = col;
+                    loc.orientation = orientation;
+                    loc.shipIndex = shipIndex;
+                    loc.locationIndex = numPossibleShipLocations[shipIndex];
+
+                    for (int k = 0; k < size; k++)
+                    {
+                        loc.occupiedSquares[k] = occupiedSquares[k];
+                    }
+
+                    possibleShipLocations[shipIndex][numPossibleShipLocations[shipIndex]] = loc;
+                    numPossibleShipLocations[shipIndex]++;
+                }
+            }
+        }
+    }
+}
+
+// Most powerful probability grid generation & using parallel programming
+int **generateProbabilityGrid(int **grid, int ships[6])
+{
+    int numShips = 0;
+    int shipSizes[4]; // Array to hold sizes of remaining ships
+
+    // Collect sizes of ships that have not been sunk yet
+    for (int k = 2; k <= 5; k++)
+    {
+        if (ships[k] > 0)
+        {
+            shipSizes[numShips++] = k;
+        }
+    }
+
+    ShipLocation *possibleShipLocations[4]; // Array to hold possible locations for each ship
+    int numPossibleShipLocations[4];        // Number of possible locations for each ship
+
+    // Generate all possible ship locations
+    generatePossibleShipLocations(grid, shipSizes, numShips, possibleShipLocations, numPossibleShipLocations);
+
+    // Initialize location frequencies for each ship
+    int **locationFrequencies = malloc(numShips * sizeof(int *));
+    for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
+    {
+        locationFrequencies[shipIndex] = calloc(numPossibleShipLocations[shipIndex], sizeof(int));
+    }
+
+    int validConfigurationsCounted = 0; // Total number of valid configurations found
+    int y = 10000;                      // Number of samples for Monte Carlo simulation
+
+// Parallelization using OpenMP
+#pragma omp parallel
+    {
+        // Thread-local copies of variables to avoid race conditions
+        int **localLocationFrequencies = malloc(numShips * sizeof(int *));
+        for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
+        {
+            localLocationFrequencies[shipIndex] = calloc(numPossibleShipLocations[shipIndex], sizeof(int));
+        }
+
+        int localValidConfigurations = 0; // Thread-local count of valid configurations
+
+        unsigned int seed = (unsigned int)time(NULL) ^ omp_get_thread_num(); // Unique seed for each thread
+
+// Parallel for loop over the number of samples
+#pragma omp for
+        for (int sample = 0; sample < y; sample++)
+        {
+            ShipLocation selectedLocations[4]; // Selected locations for each ship
+            int selectedIndices[4];            // Indices of the selected locations
+            int occupiedSquares[100] = {0};    // Grid to mark occupied squares
+
+            int overlap = 0; // Flag to check for overlaps between ships
+
+            // Randomly select positions for each ship
+            for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
+            {
+                int n = numPossibleShipLocations[shipIndex];
+                if (n == 0)
+                {
+                    overlap = 1; // No possible positions for this ship
+                    break;
+                }
+
+                int randIndex = rand_r(&seed) % n; // Thread-safe random number
+
+                ShipLocation loc = possibleShipLocations[shipIndex][randIndex];
+                selectedLocations[shipIndex] = loc;
+                selectedIndices[shipIndex] = randIndex;
+
+                // Check for overlaps with other ships
+                for (int k = 0; k < loc.shipSize; k++)
+                {
+                    int square = loc.occupiedSquares[k];
+                    if (occupiedSquares[square])
+                    {
+                        overlap = 1;
+                        break;
+                    }
+                    else
+                    {
+                        occupiedSquares[square] = 1;
+                    }
+                }
+                if (overlap)
+                    break;
+            }
+
+            if (overlap)
+                continue; // Skip to next sample
+
+            // Check for conflicts with the current board state
+            int conflict = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                int row = i / 10;
+                int col = i % 10;
+
+                if (grid[row][col] == HIT)
+                {
+                    if (!occupiedSquares[i])
+                    {
+                        conflict = 1; // HIT cell not covered by any ship
+                        break;
+                    }
+                }
+                else if (grid[row][col] == MISS)
+                {
+                    if (occupiedSquares[i])
+                    {
+                        conflict = 1; // MISS cell occupied by a ship
+                        break;
+                    }
+                }
+            }
+
+            if (conflict)
+                continue; // Skip to next sample
+
+            // Valid configuration found
+            for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
+            {
+                localLocationFrequencies[shipIndex][selectedIndices[shipIndex]]++;
+            }
+            localValidConfigurations++;
+        } // End of parallel for loop
+
+// Critical section to update shared variables
+#pragma omp critical
+        {
+            for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
+            {
+                for (int locIndex = 0; locIndex < numPossibleShipLocations[shipIndex]; locIndex++)
+                {
+                    locationFrequencies[shipIndex][locIndex] += localLocationFrequencies[shipIndex][locIndex];
+                }
+            }
+            validConfigurationsCounted += localValidConfigurations;
+        }
+
+        // Free thread-local memory
+        for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
+        {
+            free(localLocationFrequencies[shipIndex]);
+        }
+        free(localLocationFrequencies);
+    } // End of parallel region
+
+    // Compute square frequencies based on location frequencies
+    int squareFrequencies[100] = {0};
+
+    for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
+    {
+        for (int locIndex = 0; locIndex < numPossibleShipLocations[shipIndex]; locIndex++)
+        {
+            int freq = locationFrequencies[shipIndex][locIndex];
+            if (freq > 0)
+            {
+                ShipLocation loc = possibleShipLocations[shipIndex][locIndex];
+                for (int k = 0; k < loc.shipSize; k++)
+                {
+                    int square = loc.occupiedSquares[k];
+                    squareFrequencies[square] += freq;
+                }
+            }
+        }
+    }
+
+    // Allocate and initialize the probability grid
+    int **probabilityGrid = allocateMem();
+
+    // Exclude HIT and MISS cells from being targeted again
+    for (int i = 0; i < 100; i++)
+    {
+        int row = i / 10;
+        int col = i % 10;
+        if (grid[row][col] == HIT || grid[row][col] == MISS)
+        {
+            probabilityGrid[row][col] = 0;
+        }
+        else
+        {
+            probabilityGrid[row][col] = squareFrequencies[i];
+        }
+    }
+
+    // Free allocated memory
+    for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
+    {
+        free(possibleShipLocations[shipIndex]);
+        free(locationFrequencies[shipIndex]);
+    }
+    free(locationFrequencies);
+
+    return probabilityGrid; // Return the computed probability grid
+}
+
 void placeShips(struct player *botPlayer)
 {
-    int **probabilityGrid = generateProbabilityGrid(0, botPlayer->grid, botPlayer->ships); 
+    playerCopyGrid = allocateMem();
+    int **probabilityGrid = generateProbabilityGrid(botPlayer->grid, botPlayer->ships);
 
-    for (int shipSize = 5; shipSize >= 2; shipSize--)  // Largest to smallest
+    for (int shipSize = 5; shipSize >= 2; shipSize--) // Largest to smallest
     {
         int placed = 0;
         int attempts = 0;
 
-        while (!placed && attempts < 1000)  // Limit placement attempts
+        while (!placed && attempts < 1000) // Limit placement attempts
         {
             attempts++;
 
@@ -193,7 +481,7 @@ void placeShips(struct player *botPlayer)
             char orientation = (rand() % 2) ? 'H' : 'V';
 
             // Randomly select a starting point for the ship placement
-            int x = rand() % 10; 
+            int x = rand() % 10;
             int y = rand() % 10;
 
             int valid = 1;
@@ -201,7 +489,7 @@ void placeShips(struct player *botPlayer)
             // Check if the placement is valid
             if (orientation == 'H') // Horizontal
             {
-                if (x + shipSize <= 10) 
+                if (x + shipSize <= 10)
                 {
                     for (int i = 0; i < shipSize; i++)
                     {
@@ -217,7 +505,7 @@ void placeShips(struct player *botPlayer)
                         // Place the ship
                         for (int i = 0; i < shipSize; i++)
                         {
-                            botPlayer->grid[y][x + i] = shipSize; 
+                            botPlayer->grid[y][x + i] = shipSize;
                         }
                         placed = 1;
                     }
@@ -225,7 +513,7 @@ void placeShips(struct player *botPlayer)
             }
             else if (orientation == 'V') // Vertical
             {
-                if (y + shipSize <= 10) 
+                if (y + shipSize <= 10)
                 {
                     for (int i = 0; i < shipSize; i++)
                     {
@@ -241,7 +529,7 @@ void placeShips(struct player *botPlayer)
                         // Place the ship
                         for (int i = 0; i < shipSize; i++)
                         {
-                            botPlayer->grid[y + i][x] = shipSize; 
+                            botPlayer->grid[y + i][x] = shipSize;
                         }
                         placed = 1;
                     }
@@ -260,10 +548,15 @@ void placeShips(struct player *botPlayer)
         if (!placed)
         {
             printf("Error: Failed to place ship of size %d after 1000 attempts.\n", shipSize);
-            exit(1);  // Exit the program to avoid infinite loop
+            exit(1); // Exit the program to avoid infinite loop
         }
     }
 
+    printGrid(botPlayer->grid, 1);
+    getchar();
+    printWithDelay("Press to start.", 25);
+    getchar();
+    waitForMilliseconds(3000);
     for (int i = 0; i < 10; i++)
     {
         free(probabilityGrid[i]);
@@ -271,16 +564,15 @@ void placeShips(struct player *botPlayer)
     free(probabilityGrid);
 }
 
-
 void performBotMove(struct player *player, struct player *botPlayer)
 {
-    int **probabilityGrid = generateProbabilityGrid(1, botPlayer->grid, botPlayer->ships); // 1 for targeting mode
+    int **probabilityGrid = generateProbabilityGrid(playerCopyGrid, player->ships);
 
     // If torpedo is unlocked and available, use it on the row or column with the highest probability.
     if (botPlayer->torpedoAvailable)
     {
-        float rowProbabilities[10] = {0}; 
-        float colProbabilities[10] = {0}; 
+        float rowProbabilities[10] = {0};
+        float colProbabilities[10] = {0};
 
         for (int i = 0; i < 10; i++)
         {
@@ -310,11 +602,11 @@ void performBotMove(struct player *player, struct player *botPlayer)
 
         if (maxRowProb >= maxColProb)
         {
-            BotTorpedo(botPlayer->grid, 'R', targetRow, player, botPlayer);  // Fire bot torpedo on row
+            BotTorpedo(botPlayer->grid, 'R', targetRow, player, botPlayer); // Fire bot torpedo on row
         }
         else
         {
-            BotTorpedo(botPlayer->grid, 'C', targetCol, player, botPlayer);  // Fire bot torpedo on column
+            BotTorpedo(botPlayer->grid, 'C', targetCol, player, botPlayer); // Fire bot torpedo on column
         }
         free(probabilityGrid); // Free the memory used by the probability grid
         return;
@@ -324,15 +616,15 @@ void performBotMove(struct player *player, struct player *botPlayer)
     if (botPlayer->artilleryAvailable)
     {
         int targetRow = 0, targetCol = 0;
-        float maxProbability = 0;
-        for (int i = 0; i < 9; i++)  
+        int maxProbability = 0;
+        for (int i = 0; i < 9; i++)
         {
             for (int j = 0; j < 9; j++)
             {
-                float areaProbability = probabilityGrid[i][j] +
-                                        probabilityGrid[i + 1][j] +
-                                        probabilityGrid[i][j + 1] +
-                                        probabilityGrid[i + 1][j + 1];
+                int areaProbability = probabilityGrid[i][j] +
+                                      probabilityGrid[i + 1][j] +
+                                      probabilityGrid[i][j + 1] +
+                                      probabilityGrid[i + 1][j + 1];
 
                 if (areaProbability > maxProbability)
                 {
@@ -344,7 +636,7 @@ void performBotMove(struct player *player, struct player *botPlayer)
         }
 
         BotArtillery(botPlayer->grid, targetRow, targetCol, player, botPlayer); // Call bot-specific artillery
-        free(probabilityGrid); // Free the memory used by the probability grid
+        free(probabilityGrid);                                                  // Free the memory used by the probability grid
         return;
     }
 
@@ -373,8 +665,8 @@ void performBotMove(struct player *player, struct player *botPlayer)
                 }
             }
 
-            BotRadarSweep(botPlayer->grid, targetRow, targetCol, player, botPlayer);
-            botPlayer->radarCount--; // Decrease radar count after using it
+            BotRadarSweep(player->grid, targetRow, targetCol, botPlayer, player);
+            // botPlayer->radarCount--; // Decrease radar count after using it
             free(probabilityGrid); // Free the memory used by the probability grid
             return;
         }
@@ -384,16 +676,16 @@ void performBotMove(struct player *player, struct player *botPlayer)
     if (botPlayer->availableScreens > 0)
     {
         int targetRow = 0, targetCol = 0;
-        float maxProbability = 0;
+        int maxProbability = 0;
 
         for (int i = 0; i < 9; i++)
         {
             for (int j = 0; j < 9; j++)
             {
-                float areaProbability = probabilityGrid[i][j] +
-                                        probabilityGrid[i + 1][j] +
-                                        probabilityGrid[i][j + 1] +
-                                        probabilityGrid[i + 1][j + 1];
+                int areaProbability = probabilityGrid[i][j] +
+                                      probabilityGrid[i + 1][j] +
+                                      probabilityGrid[i][j + 1] +
+                                      probabilityGrid[i + 1][j + 1];
 
                 if (areaProbability > maxProbability)
                 {
@@ -406,19 +698,19 @@ void performBotMove(struct player *player, struct player *botPlayer)
 
         BotSmokeScreen(botPlayer->grid, targetRow, targetCol, botPlayer);
         botPlayer->availableScreens--; // Decrease smoke screen count after using it
-        free(probabilityGrid); // Free the memory used by the probability grid
+        free(probabilityGrid);         // Free the memory used by the probability grid
         return;
     }
 
     // Default to firing at the cell with the highest probability.
     int targetRow = 0, targetCol = 0;
-    float maxProbability = 0;
+    int maxProbability = 0;
 
     for (int i = 0; i < 10; i++)
     {
         for (int j = 0; j < 10; j++)
         {
-            if (probabilityGrid[i][j] > maxProbability)
+            if (probabilityGrid[i][j] > maxProbability && probabilityGrid[i][j] < MAX)
             {
                 maxProbability = probabilityGrid[i][j];
                 targetRow = i;
@@ -427,7 +719,12 @@ void performBotMove(struct player *player, struct player *botPlayer)
         }
     }
 
-    BotFire(botPlayer->grid, botPlayer->ships, targetRow, targetCol, player, botPlayer);
+    BotFire(player->grid, player->ships, targetRow, targetCol, botPlayer, player);
+
+    for (int i = 2; i < 6; i++)
+    {
+        printf("%d ", player->ships[i]);
+    }
 
     free(probabilityGrid); // Free the memory used by the probability grid
 }
@@ -435,22 +732,22 @@ void performBotMove(struct player *player, struct player *botPlayer)
 int shouldUseRadar(int **probabilityGrid)
 {
     // Define a threshold that determines whether radar usage is "worth it"
-    float radarThreshold = 5.0;  // Probabilities above this value are interesting for radar sweeps
+    float radarThreshold = 5.0; // Probabilities above this value are interesting for radar sweeps
 
     // Check for cells that have a high probability of containing ships
     // The bot will try to sweep areas with higher probability first
     float maxProbability = 0;
     int highProbRow = -1, highProbCol = -1;
 
-    for (int i = 0; i < 9; i++)  // Iterate through the grid (excluding the last row and column)
+    for (int i = 0; i < 9; i++) // Iterate through the grid (excluding the last row and column)
     {
         for (int j = 0; j < 9; j++)
         {
             // Calculate the total probability of the 2x2 area
-            float areaProbability = probabilityGrid[i][j] +
-                                    probabilityGrid[i + 1][j] +
-                                    probabilityGrid[i][j + 1] +
-                                    probabilityGrid[i + 1][j + 1];
+            int areaProbability = probabilityGrid[i][j] +
+                                  probabilityGrid[i + 1][j] +
+                                  probabilityGrid[i][j + 1] +
+                                  probabilityGrid[i + 1][j + 1];
 
             // If the area has a higher probability than the max found so far, and it's above the threshold
             if (areaProbability > maxProbability && areaProbability > radarThreshold)
@@ -476,7 +773,7 @@ void BotFire(int **grid, int ships[], int row, int col, struct player *attacker,
 {
     attacker->torpedoAvailable = 0;
     attacker->artilleryNextTurn = 0;
-    waitForMilliseconds(500); 
+    waitForMilliseconds(500);
 
     if (row < 0 || row >= 10 || col < 0 || col >= 10)
     {
@@ -493,6 +790,7 @@ void BotFire(int **grid, int ships[], int row, int col, struct player *attacker,
     if (grid[row][col] == WATER)
     {
         grid[row][col] = MISS;
+        playerCopyGrid[row][col] = MISS;
         printWithDelay("The bot missed!\n", 25);
         return;
     }
@@ -500,7 +798,7 @@ void BotFire(int **grid, int ships[], int row, int col, struct player *attacker,
     int shipID = grid[row][col];
     if (shipID > 10)
     {
-        shipID /= 10;  
+        shipID /= 10;
     }
 
     if (shipID < 2 || shipID > 5)
@@ -511,6 +809,7 @@ void BotFire(int **grid, int ships[], int row, int col, struct player *attacker,
 
     ships[shipID]--;
     grid[row][col] = HIT;
+    playerCopyGrid[row][col] = HIT;
 
     printWithDelay("The bot hit your ship!\n", 25);
 
@@ -528,16 +827,16 @@ void BotFire(int **grid, int ships[], int row, int col, struct player *attacker,
         {
             for (int j = 0; j < 10; j++)
             {
-                if (grid[i][j] == shipID)
+                if (playerCopyGrid[i][j] == HIT)
                 {
-                    grid[i][j] = MISS;  // Mark the ship's coordinates as missed
+                    playerCopyGrid[i][j] = MISS; // Mark the ship's coordinates as missed
                 }
             }
         }
 
-        attacker->shipsSunk++;           
-        attacker->availableScreens++;    
-        attacker->artilleryNextTurn = 1; 
+        attacker->shipsSunk++;
+        attacker->availableScreens++;
+        attacker->artilleryNextTurn = 1;
 
         if (attacker->shipsSunk == 3)
         {
@@ -566,7 +865,7 @@ void BotRadarSweep(int **grid, int row, int col, struct player *attacker, struct
     }
 
     int found = 0;
-    for (int i = row; i < row + 2; i++) 
+    for (int i = row; i < row + 2; i++)
     {
         for (int j = col; j < col + 2; j++)
         {
@@ -575,7 +874,7 @@ void BotRadarSweep(int **grid, int row, int col, struct player *attacker, struct
             if (cell % 10 == 0)
                 continue;
 
-            if (cell >= 2 && cell <= 5) 
+            if (cell >= 2 && cell <= 5)
             {
                 found = 1;
             }
@@ -598,7 +897,7 @@ void BotSmokeScreen(int **grid, int row, int col, struct player *attacker)
 {
     attacker->torpedoAvailable = 0;
     attacker->artilleryNextTurn = 0;
-    waitForMilliseconds(500);  
+    waitForMilliseconds(500);
 
     if (attacker->availableScreens <= 0)
     {
@@ -616,7 +915,7 @@ void BotSmokeScreen(int **grid, int row, int col, struct player *attacker)
     {
         for (int j = col; j < col + 2; j++)
         {
-            grid[i][j] *= 10; 
+            grid[i][j] *= 10;
         }
     }
 
@@ -629,7 +928,7 @@ void BotSmokeScreen(int **grid, int row, int col, struct player *attacker)
 
 void BotArtillery(int **grid, int row, int col, struct player *attacker, struct player *opponent)
 {
-    waitForMilliseconds(500); 
+    waitForMilliseconds(500);
 
     if (!attacker->artilleryNextTurn)
     {
@@ -653,15 +952,15 @@ void BotArtillery(int **grid, int row, int col, struct player *attacker, struct 
     {
         for (int j = col; j < col + 2; j++)
         {
-            if (grid[i][j] > 0)  
+            if (grid[i][j] > 0)
             {
                 int shipID = grid[i][j];
                 if (shipID > 10)
                 {
-                    shipID /= 10; 
+                    shipID /= 10;
                 }
-                ships[shipID]--;  
-                grid[i][j] = HIT;  
+                ships[shipID]--;
+                grid[i][j] = HIT;
                 hit = 1;
 
                 if (ships[shipID] == 0)
@@ -673,10 +972,10 @@ void BotArtillery(int **grid, int row, int col, struct player *attacker, struct 
                                                                      : "Carrier");
                     printWithDelay(message, 25);
 
-                    opponent->shipsRemaining--;  
-                    attacker->shipsSunk++;  
-                    attacker->artilleryNextTurn = 1;  
-                    attacker->availableScreens++;   
+                    opponent->shipsRemaining--;
+                    attacker->shipsSunk++;
+                    attacker->artilleryNextTurn = 1;
+                    attacker->availableScreens++;
 
                     if (attacker->shipsSunk == 3)
                     {
@@ -689,15 +988,15 @@ void BotArtillery(int **grid, int row, int col, struct player *attacker, struct 
                         {
                             if (grid[i][j] == shipID)
                             {
-                                grid[i][j] = MISS;  
+                                grid[i][j] = MISS;
                             }
                         }
                     }
                 }
             }
-            else if (grid[i][j] == WATER) 
+            else if (grid[i][j] == WATER)
             {
-                grid[i][j] = MISS;  
+                grid[i][j] = MISS;
             }
         }
     }
@@ -839,16 +1138,7 @@ void BotTorpedo(int **grid, char type, int index, struct player *attacker, struc
     }
 }
 
-
-
-
-
-
-
-
-
-
-// void printGrid(int **grid)
+// void printGrids(int **grid)
 // {
 //     for (int i = 0; i < 10; i++)
 //     {
@@ -867,37 +1157,40 @@ void BotTorpedo(int **grid, char type, int index, struct player *attacker, struc
 
 // int main()
 // {
-// int ships[6] = {0, 0, 2, 3, 4, 5};
-// int **grid = allocate();
-// for (int j = 0; j < 5; j++)
-//     grid[0][j] = 5;
+//     int ships[6] = {0, 0, 2, 3, 4, 5};
+//     int **grid = allocateMem();
+//     // for (int j = 0; j < 5; j++)
+//     //     grid[0][j] = 5;
 
-// for (int i = 1; i <= 4; i++)
-//     grid[i][4] = 4;
+//     // for (int i = 1; i <= 4; i++)
+//     //     grid[i][4] = 4;
 
-// for (int j = 6; j < 9; j++)
-//     grid[6][j] = 3;
+//     // for (int j = 6; j < 9; j++)
+//     //     grid[6][j] = 3;
 
-// for (int j = 7; j < 9; j++)
-//     grid[9][j] = 2;
+//     // for (int j = 7; j < 9; j++)
+//     //     grid[9][j] = 2;
 
-// grid[0][2] = -2; // Miss on size-5 ship
-// grid[6][7] = -2;
-// grid[8][7] = -2;
-// grid[5][5] = -2; // Miss
-// grid[4][4] = -2; // Miss
+//     grid[3][3] = -2; // Miss on size-5 ship
+//     grid[4][4] = -2;
+//     grid[5][5] = -2;
+//     grid[6][6] = -2; // Miss
+//     grid[4][4] = -2; // Miss
+//     grid[2][7] = -2;
+//     grid[2][6] = -1;
+//     grid[3][7] = -2;
+//     grid[3][6] = -1;
+//     int **probaGrid = generateProbabilityGrid(grid, ships);
+//     printGrids(probaGrid);
 
-// int **probaGrid = generateProbabilityGrid(0, grid, ships);
-// printGrid(probaGrid);
-
-// // Free allocated memory
-// for (int i = 0; i < 10; i++)
-// {
-//     free(grid[i]);
-//     free(probaGrid[i]);
-// }
-// free(grid);
-// free(probaGrid);
+//     // Free allocated memory
+//     for (int i = 0; i < 10; i++)
+//     {
+//         free(grid[i]);
+//         free(probaGrid[i]);
+//     }
+//     free(grid);
+//     free(probaGrid);
 
 //     return 0;
 // }

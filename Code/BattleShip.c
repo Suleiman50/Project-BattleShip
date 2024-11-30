@@ -806,14 +806,16 @@ void StartBotGame()
     // Step 3: Initialize player and bot
     struct player player1 = {ptrname1, {0, 0, 2, 3, 4, 5}, 4, allocate(), 3, 0, 0, 0, 0};
     struct player player2 = {botName, {0, 0, 2, 3, 4, 5}, 4, allocate(), 3, 0, 0, 0, 0};
-
+    getchar();
+    printWithDelay("Press any key to start the game...", 25);
+    getchar();
     // Step 4: Player places their ships
     clear_terminal();
     snprintf(welcomeMsg, sizeof(welcomeMsg), "Welcome %s.\nNow you have to place your ships on this 10x10 grid.\n", ptrname1);
     printWithDelay(welcomeMsg, 25);
     printWithDelay("For placing ships, choose X Y H/V (e.g., B 3 H for cell B3 horizontally)\n", 25);
     waitForMilliseconds(500);
-    gridsetup(&player1);  // Player ship placement
+    gridsetup(&player1); // Player ship placement
 
     // Step 5: Bot places its ships
     clear_terminal();
@@ -822,7 +824,7 @@ void StartBotGame()
     printWithDelay(welcomeMsg, 25);
     waitForMilliseconds(750);
     loadingAnimation("Placing Ships");
-    placeShips(&player2);  // Bot ship placement
+    placeShips(&player2); // Bot ship placement
     clear_terminal();
 
     // Step 6: Announce game start
@@ -830,7 +832,7 @@ void StartBotGame()
     waitForMilliseconds(500);
 
     // Step 7: Randomly choose who starts the game
-    int turn = rand() % 2;  // Randomly determine who goes first
+    int turn = rand() % 2; // Randomly determine who goes first
 
     if (turn)
     {
@@ -858,8 +860,8 @@ void StartBotGame()
             // Bot's move
             performBotMove(&player1, &player2);
         }
-        clear_terminal();  // Clear screen for next turn
-        turn = ((turn + 1) % 2);  // Alternate turns
+        clear_terminal();        // Clear screen for next turn
+        turn = ((turn + 1) % 2); // Alternate turns
     }
 
     // Step 9: End the game and announce the winner
@@ -886,7 +888,6 @@ void StartBotGame()
     free(player1.grid);
     free(player2.grid);
 }
-
 
 void InitializeGame()
 {
