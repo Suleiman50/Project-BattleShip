@@ -1,6 +1,5 @@
 #ifndef BATTLESHIP_H
 #define BATTLESHIP_H
-
 // struct player definition
 struct player
 {

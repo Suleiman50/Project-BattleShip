@@ -226,7 +226,10 @@ void smoke_screen(int **grid, int row, int col, struct player *attacker)
     {
         for (int j = col; j < col + 2; j++)
         {
-            grid[i][j] *= 10; // Mark the cell as protected by smoke
+            if (grid[i][j] != HIT && grid[i][j] != MISS)
+            {
+                grid[i][j] *= 10; // Mark the cell as protected by smoke
+            }
         }
     }
 
@@ -851,6 +854,7 @@ void StartBotGame()
         if (turn == 1)
         {
             // Player's move
+            printGrid(player1.grid, 1);
             getAndPerformMove(&player1, &player2, turn);
             printWithDelay("Press Enter to end your turn...", 25);
             getchar();
@@ -868,11 +872,11 @@ void StartBotGame()
     char congratsMsg[50];
     if (didLose(&player1))
     {
-        snprintf(congratsMsg, sizeof(congratsMsg), "Congrats! You won!\n");
+        snprintf(congratsMsg, sizeof(congratsMsg), "You Lost!\n");
     }
     else
     {
-        snprintf(congratsMsg, sizeof(congratsMsg), "You Lost!\n");
+        snprintf(congratsMsg, sizeof(congratsMsg), "Congrats! You won!\n");
     }
     printWithDelay(congratsMsg, 25);
     printWithDelay("Thank you for playing!\n", 25);
