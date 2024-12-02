@@ -33,3 +33,31 @@ While tasks are distributed between the two pairs, the team will continue to fun
 	- Regular meetings will be scheduled to ensure that everyone stays aligned, progress is tracked, and overall team harmony is maintained.
 
 This approach balances focus and collaboration, streamlining the development process while maintaining flexibility for cross-pair support.
+
+For Phase 2 we had a couple of Challenges along the way, and we divided the Phase into a couple parts
+
+
+Phase 2.1: Start with bot basics (Done by Ali Mohsen and Suleiman Jaber)
+This phase was made to know all about how the bot should work and divide its main problems into easier subproblems, this included: 
+	. Deciding which move to use 
+	. Deciding where to hit
+	. Logic of the bots decision making throughout the game
+These 2 were complicated due to needing a lot of reasearch and complicated approaches such as the monte carlo simulation
+
+Phase 2.2: Get the bot working (Done by Ghanem Zain and Mohamad Othman)
+This Phase was made to find the ways that we should do the get the bot into action, this included:
+	. Bot Ship Placement
+	. Bot move decider implementation
+	. Bot performing moves
+This phase involved more of the frontend of the bot
+
+Phase 2.3: Difficulties (Done by Suleiman Jaber and ALi Mohsen)
+This Phase was purely to focus on the different strategies that we can utilise to have a couple of different difficulties with actual differnces, this included:
+	. Using different probability grid functions (SlidingWindow and MonteCarlo)
+	. Thinking of ways to make things easier for the end user (for easy mode)
+	. Adding as much optimisations as possible (for hard mode)
+
+Phase 2.4: Exaustive Testing (Done by the Team)
+This phase included the entire team so that we test the code with all the possible testcases that we can find or think about. This made us balance out the differences between the difficulties and made the hard bot play as optimally as possible.
+
+This all ensured an optimal output with a very powerful Bot in the end.
