@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
-#include <omp.h>
 #include "Bot.h"
 #include "BattleShip.h"
 
@@ -12,8 +11,12 @@
 #define MAX 1000000
 #define MAX_NAME_LENGTH 100
 #define MAX_NAMES 500
+#define EASY 1
+#define MEDIUM 2
+#define HARD 3
 
 int **playerCopyGrid;
+int checkerboardColor;
 
 // Structure to represent a possible ship location
 typedef struct
@@ -89,10 +92,25 @@ int **allocateMem()
     return grid;
 }
 
-// less powerful version of the probability Grid generation
-int **generateProbabilityGridSlidingWindow(int isTargeter, int **currentGrid, int ships[6])
+// Generate a probability grid using a sliding window approach (less powerful than Monte Carlo)
+// This function calculates the probabilities of ship placements based on current hits and misses
+int **generateProbabilityGridSlidingWindow(int **currentGrid, int ships[6])
 {
     int **finalGrid = allocateMem();
+    int isTargeter = 0;
+
+    // Check if we are in target mode (i.e., there is at least one HIT on the grid)
+    for (int i = 0; i < 10; i++)
+    {
+        for (int j = 0; j < 10; j++)
+        {
+            if (currentGrid[i][j] == HIT)
+            {
+                isTargeter = 1;
+                break;
+            }
+        }
+    }
 
     // Horizontal Ships
     for (int k = 2; k < 6; k++)
@@ -109,7 +127,7 @@ int **generateProbabilityGridSlidingWindow(int isTargeter, int **currentGrid, in
             {
                 if (currentGrid[row][right] == MISS)
                 {
-                    // Reset Window After Finding Miss
+                    // Reset Window After Finding MISS
                     left = right + 1;
                     targeterValid = 0;
                     right = left;
@@ -155,7 +173,7 @@ int **generateProbabilityGridSlidingWindow(int isTargeter, int **currentGrid, in
             {
                 if (currentGrid[bottom][col] == MISS)
                 {
-                    // Reset Window After Miss
+                    // Reset Window After MISS
                     top = bottom + 1;
                     targeterValid = 0;
                     bottom++;
@@ -216,7 +234,6 @@ void generatePossibleShipLocations(int **grid, int shipSizes[], int numShips,
 
                     int overlapMiss = 0; // Flag to check overlap with MISS squares
                     int occupiedSquares[5];
-                    int coversAllHits = 1; // Flag to ensure ship covers all HIT squares
 
                     // Check each square the ship would occupy
                     for (int k = 0; k < size; k++)
@@ -265,7 +282,7 @@ void generatePossibleShipLocations(int **grid, int shipSizes[], int numShips,
     }
 }
 
-// Most powerful probability grid generation & using parallel programming
+// Generate the most powerful probability grid using Monte Carlo simulation
 int **generateProbabilityGrid(int **grid, int ships[6])
 {
     int numShips = 0;
@@ -296,123 +313,87 @@ int **generateProbabilityGrid(int **grid, int ships[6])
     int validConfigurationsCounted = 0; // Total number of valid configurations found
     int y = 10000;                      // Number of samples for Monte Carlo simulation
 
-// Parallelization using OpenMP
-#pragma omp parallel
+    // Single-threaded Monte Carlo simulation
+    for (int sample = 0; sample < y; sample++)
     {
-        // Thread-local copies of variables to avoid race conditions
-        int **localLocationFrequencies = malloc(numShips * sizeof(int *));
+        ShipLocation selectedLocations[4]; // Selected locations for each ship
+        int selectedIndices[4];            // Indices of the selected locations
+        int occupiedSquares[100] = {0};    // Grid to mark occupied squares
+
+        int overlap = 0; // Flag to check for overlaps between ships
+
+        // Randomly select positions for each ship
         for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
         {
-            localLocationFrequencies[shipIndex] = calloc(numPossibleShipLocations[shipIndex], sizeof(int));
-        }
-
-        int localValidConfigurations = 0; // Thread-local count of valid configurations
-
-        unsigned int seed = (unsigned int)time(NULL) ^ omp_get_thread_num(); // Unique seed for each thread
-
-// Parallel for loop over the number of samples
-#pragma omp for
-        for (int sample = 0; sample < y; sample++)
-        {
-            ShipLocation selectedLocations[4]; // Selected locations for each ship
-            int selectedIndices[4];            // Indices of the selected locations
-            int occupiedSquares[100] = {0};    // Grid to mark occupied squares
-
-            int overlap = 0; // Flag to check for overlaps between ships
-
-            // Randomly select positions for each ship
-            for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
+            int n = numPossibleShipLocations[shipIndex];
+            if (n == 0)
             {
-                int n = numPossibleShipLocations[shipIndex];
-                if (n == 0)
-                {
-                    overlap = 1; // No possible positions for this ship
-                    break;
-                }
-
-                int randIndex = rand_r(&seed) % n; // Thread-safe random number
-
-                ShipLocation loc = possibleShipLocations[shipIndex][randIndex];
-                selectedLocations[shipIndex] = loc;
-                selectedIndices[shipIndex] = randIndex;
-
-                // Check for overlaps with other ships
-                for (int k = 0; k < loc.shipSize; k++)
-                {
-                    int square = loc.occupiedSquares[k];
-                    if (occupiedSquares[square])
-                    {
-                        overlap = 1;
-                        break;
-                    }
-                    else
-                    {
-                        occupiedSquares[square] = 1;
-                    }
-                }
-                if (overlap)
-                    break;
+                overlap = 1; // No possible positions for this ship
+                break;
             }
 
+            int randIndex = rand() % n; // Random number
+
+            ShipLocation loc = possibleShipLocations[shipIndex][randIndex];
+            selectedLocations[shipIndex] = loc;
+            selectedIndices[shipIndex] = randIndex;
+
+            // Check for overlaps with other ships
+            for (int k = 0; k < loc.shipSize; k++)
+            {
+                int square = loc.occupiedSquares[k];
+                if (occupiedSquares[square])
+                {
+                    overlap = 1;
+                    break;
+                }
+                else
+                {
+                    occupiedSquares[square] = 1;
+                }
+            }
             if (overlap)
-                continue; // Skip to next sample
-
-            // Check for conflicts with the current board state
-            int conflict = 0;
-            for (int i = 0; i < 100; i++)
-            {
-                int row = i / 10;
-                int col = i % 10;
-
-                if (grid[row][col] == HIT)
-                {
-                    if (!occupiedSquares[i])
-                    {
-                        conflict = 1; // HIT cell not covered by any ship
-                        break;
-                    }
-                }
-                else if (grid[row][col] == MISS)
-                {
-                    if (occupiedSquares[i])
-                    {
-                        conflict = 1; // MISS cell occupied by a ship
-                        break;
-                    }
-                }
-            }
-
-            if (conflict)
-                continue; // Skip to next sample
-
-            // Valid configuration found
-            for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
-            {
-                localLocationFrequencies[shipIndex][selectedIndices[shipIndex]]++;
-            }
-            localValidConfigurations++;
-        } // End of parallel for loop
-
-// Critical section to update shared variables
-#pragma omp critical
-        {
-            for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
-            {
-                for (int locIndex = 0; locIndex < numPossibleShipLocations[shipIndex]; locIndex++)
-                {
-                    locationFrequencies[shipIndex][locIndex] += localLocationFrequencies[shipIndex][locIndex];
-                }
-            }
-            validConfigurationsCounted += localValidConfigurations;
+                break;
         }
 
-        // Free thread-local memory
+        if (overlap)
+            continue; // Skip to next sample
+
+        // Check for conflicts with the current board state
+        int conflict = 0;
+        for (int i = 0; i < 100; i++)
+        {
+            int row = i / 10;
+            int col = i % 10;
+
+            if (grid[row][col] == HIT)
+            {
+                if (!occupiedSquares[i])
+                {
+                    conflict = 1; // HIT cell not covered by any ship
+                    break;
+                }
+            }
+            else if (grid[row][col] == MISS)
+            {
+                if (occupiedSquares[i])
+                {
+                    conflict = 1; // MISS cell occupied by a ship
+                    break;
+                }
+            }
+        }
+
+        if (conflict)
+            continue; // Skip to next sample
+
+        // Valid configuration found
         for (int shipIndex = 0; shipIndex < numShips; shipIndex++)
         {
-            free(localLocationFrequencies[shipIndex]);
+            locationFrequencies[shipIndex][selectedIndices[shipIndex]]++;
         }
-        free(localLocationFrequencies);
-    } // End of parallel region
+        validConfigurationsCounted++;
+    }
 
     // Compute square frequencies based on location frequencies
     int squareFrequencies[100] = {0};
@@ -463,8 +444,10 @@ int **generateProbabilityGrid(int **grid, int ships[6])
     return probabilityGrid; // Return the computed probability grid
 }
 
+// Function to randomly place ships on the bot's grid
 void placeShips(struct player *botPlayer)
 {
+    int checkerboardColor = rand() % 2;
     playerCopyGrid = allocateMem();
     int **probabilityGrid = generateProbabilityGrid(botPlayer->grid, botPlayer->ships);
 
@@ -537,11 +520,11 @@ void placeShips(struct player *botPlayer)
             }
 
             // Debugging information
-            if (!valid)
-            {
-                printf("Failed to place ship size %d at (%d, %d) orientation %c\n",
-                       shipSize, x, y, orientation);
-            }
+            // if (!valid)
+            // {
+            //     printf("Failed to place ship size %d at (%d, %d) orientation %c\n",
+            //            shipSize, x, y, orientation);
+            // }
         }
 
         // If placement failed after max attempts
@@ -551,12 +534,10 @@ void placeShips(struct player *botPlayer)
             exit(1); // Exit the program to avoid infinite loop
         }
     }
-
-    printGrid(botPlayer->grid, 1);
     getchar();
-    printWithDelay("Press to start.", 25);
+    printWithDelay("Press Enter to start. ", 25);
     getchar();
-    waitForMilliseconds(3000);
+    waitForMilliseconds(500);
     for (int i = 0; i < 10; i++)
     {
         free(probabilityGrid[i]);
@@ -564,10 +545,30 @@ void placeShips(struct player *botPlayer)
     free(probabilityGrid);
 }
 
-void performBotMove(struct player *player, struct player *botPlayer)
+// Function to select the bot's move based on difficulty level
+void selectMoveDifficulty(struct player *player, struct player *botplayer, int difficulty)
+{
+    if (difficulty == EASY)
+    {
+        performBotMoveEasy(player, botplayer);
+    }
+    else if (difficulty == MEDIUM)
+    {
+        performBotMoveMedium(player, botplayer);
+    }
+    else
+    {
+        performBotMoveHard(player, botplayer);
+    }
+}
+
+// Bot's move for Hard difficulty using Monte Carlo simulation
+void performBotMoveHard(struct player *player, struct player *botPlayer)
 {
     int **probabilityGrid = generateProbabilityGrid(playerCopyGrid, player->ships);
     int isTargeter = 0;
+
+    // Check if we are in target mode (i.e., there is at least one HIT on the grid)
     for (int i = 0; i < 10; i++)
     {
         for (int j = 0; j < 10; j++)
@@ -579,12 +580,14 @@ void performBotMove(struct player *player, struct player *botPlayer)
             }
         }
     }
-    // This if condition is to override the use of the smoke screen if we are in targeter mode
+
+    // This condition is to override the use of smoke screen if we are in targeter mode
     if (isTargeter && !botPlayer->torpedoAvailable && !botPlayer->artilleryAvailable)
     {
         int targetRow = 0, targetCol = 0;
         int maxProbability = 0;
 
+        // Find the cell with the highest probability
         for (int i = 0; i < 10; i++)
         {
             for (int j = 0; j < 10; j++)
@@ -600,15 +603,22 @@ void performBotMove(struct player *player, struct player *botPlayer)
 
         BotFire(player->grid, player->ships, targetRow, targetCol, botPlayer, player);
 
+        // Free the memory used by the probability grid
+        for (int i = 0; i < 10; i++)
+        {
+            free(probabilityGrid[i]);
+        }
         free(probabilityGrid);
         return;
     }
+
     // If torpedo is unlocked and available, use it on the row or column with the highest probability.
     if (botPlayer->torpedoAvailable)
     {
         float rowProbabilities[10] = {0};
         float colProbabilities[10] = {0};
 
+        // Calculate probabilities for each row and column
         for (int i = 0; i < 10; i++)
         {
             for (int j = 0; j < 10; j++)
@@ -621,6 +631,7 @@ void performBotMove(struct player *player, struct player *botPlayer)
         float maxRowProb = 0, maxColProb = 0;
         int targetRow = 0, targetCol = 0;
 
+        // Find the row and column with the highest probability
         for (int i = 0; i < 10; i++)
         {
             if (rowProbabilities[i] > maxRowProb)
@@ -645,7 +656,12 @@ void performBotMove(struct player *player, struct player *botPlayer)
             BotTorpedo(player->grid, 'C', targetCol, botPlayer, player); // Use player's grid
         }
 
-        free(probabilityGrid); // Free the memory used by the probability grid
+        // Free the memory used by the probability grid
+        for (int i = 0; i < 10; i++)
+        {
+            free(probabilityGrid[i]);
+        }
+        free(probabilityGrid);
         return;
     }
 
@@ -654,6 +670,8 @@ void performBotMove(struct player *player, struct player *botPlayer)
     {
         int targetRow = 0, targetCol = 0;
         int maxProbability = 0;
+
+        // Find the 2x2 area with the highest combined probability
         for (int i = 0; i < 9; i++)
         {
             for (int j = 0; j < 9; j++)
@@ -674,23 +692,32 @@ void performBotMove(struct player *player, struct player *botPlayer)
 
         // Call bot-specific artillery (use player's grid)
         BotArtillery(player->grid, targetRow, targetCol, botPlayer, player);
-        free(probabilityGrid); // Free the memory used by the probability grid
+
+        // Free the memory used by the probability grid
+        for (int i = 0; i < 10; i++)
+        {
+            free(probabilityGrid[i]);
+        }
+        free(probabilityGrid);
         return;
     }
 
-    // If radar sweeps are available, decide if using one is strategic.
-    if (botPlayer->radarCount > 1)
+    // Radar Sweep condition
+    if (botPlayer->radarCount > 0 && botPlayer->ships[2] > 0)
     {
+        // Since the Radar Sweep is not effective if the bot's smallest ship is sunk, we check if it's still available
         int targetRow = 0, targetCol = 0;
-        float maxProbability = 0;
+        int maxProbability = 0;
+
+        // Find the 2x2 area with the highest combined probability
         for (int i = 0; i < 9; i++)
         {
             for (int j = 0; j < 9; j++)
             {
-                float areaProbability = probabilityGrid[i][j] +
-                                        probabilityGrid[i + 1][j] +
-                                        probabilityGrid[i][j + 1] +
-                                        probabilityGrid[i + 1][j + 1];
+                int areaProbability = probabilityGrid[i][j] +
+                                      probabilityGrid[i + 1][j] +
+                                      probabilityGrid[i][j + 1] +
+                                      probabilityGrid[i + 1][j + 1];
 
                 if (areaProbability > maxProbability)
                 {
@@ -702,7 +729,13 @@ void performBotMove(struct player *player, struct player *botPlayer)
         }
 
         BotRadarSweep(player->grid, targetRow, targetCol, botPlayer, player);
-        free(probabilityGrid); // Free the memory used by the probability grid
+
+        // Free the memory used by the probability grid
+        for (int i = 0; i < 10; i++)
+        {
+            free(probabilityGrid[i]);
+        }
+        free(probabilityGrid);
         return;
     }
 
@@ -712,6 +745,7 @@ void performBotMove(struct player *player, struct player *botPlayer)
         int targetRow = 0, targetCol = 0;
         int maxShips = 0;
 
+        // Find the 2x2 area with the most of the bot's ships
         for (int i = 0; i < 9; i++)
         {
             for (int j = 0; j < 9; j++)
@@ -744,7 +778,13 @@ void performBotMove(struct player *player, struct player *botPlayer)
 
         BotSmokeScreen(botPlayer->grid, targetRow, targetCol, botPlayer);
         botPlayer->availableScreens--; // Decrease smoke screen count after using it
-        free(probabilityGrid);         // Free the memory used by the probability grid
+
+        // Free the memory used by the probability grid
+        for (int i = 0; i < 10; i++)
+        {
+            free(probabilityGrid[i]);
+        }
+        free(probabilityGrid);
         return;
     }
 
@@ -752,6 +792,7 @@ void performBotMove(struct player *player, struct player *botPlayer)
     int targetRow = 0, targetCol = 0;
     int maxProbability = 0;
 
+    // Find the cell with the highest probability
     for (int i = 0; i < 10; i++)
     {
         for (int j = 0; j < 10; j++)
@@ -767,64 +808,354 @@ void performBotMove(struct player *player, struct player *botPlayer)
 
     BotFire(player->grid, player->ships, targetRow, targetCol, botPlayer, player);
 
-    free(probabilityGrid); // Free the memory used by the probability grid
+    // Free the memory used by the probability grid
+    for (int i = 0; i < 10; i++)
+    {
+        free(probabilityGrid[i]);
+    }
+    free(probabilityGrid);
 }
 
-// int shouldUseRadar(int **probabilityGrid)
-// {
-//     // Define a threshold that determines whether radar usage is "worth it"
-//     float radarThreshold = 5.0; // Probabilities above this value are interesting for radar sweeps
+// Bot's move for Medium difficulty using sliding window approach and checkerboard randomness
+void performBotMoveMedium(struct player *player, struct player *botPlayer)
+{
+    int randomChance = rand() % 100;
 
-//     // Check for cells that have a high probability of containing ships
-//     // The bot will try to sweep areas with higher probability first
-//     float maxProbability = 0;
-//     int highProbRow = -1, highProbCol = -1;
+    if (randomChance < 20)
+    { // 20% chance to make a random move
+        // Checkerboard random move
+        int targetRow, targetCol;
+        int attempts = 0;
+        int maxAttempts = 100; // Prevent infinite loop in case of full board
 
-//     for (int i = 0; i < 9; i++) // Iterate through the grid (excluding the last row and column)
-//     {
-//         for (int j = 0; j < 9; j++)
-//         {
-//             // Calculate the total probability of the 2x2 area
-//             int areaProbability = probabilityGrid[i][j] +
-//                                   probabilityGrid[i + 1][j] +
-//                                   probabilityGrid[i][j + 1] +
-//                                   probabilityGrid[i + 1][j + 1];
+        do
+        {
+            targetRow = rand() % 10;
+            targetCol = rand() % 10;
+            attempts++;
 
-//             // If the area has a higher probability than the max found so far, and it's above the threshold
-//             if (areaProbability > maxProbability && areaProbability > radarThreshold)
-//             {
-//                 maxProbability = areaProbability;
-//                 highProbRow = i;
-//                 highProbCol = j;
-//             }
-//         }
-//     }
+            if (attempts > maxAttempts)
+            {
+                // In case the checkerboard cells are exhausted, pick any random cell
+                do
+                {
+                    targetRow = rand() % 10;
+                    targetCol = rand() % 10;
+                } while (playerCopyGrid[targetRow][targetCol] == HIT || playerCopyGrid[targetRow][targetCol] == MISS);
+                break;
+            }
+        } while ((targetRow + targetCol) % 2 != checkerboardColor ||
+                 playerCopyGrid[targetRow][targetCol] == HIT ||
+                 playerCopyGrid[targetRow][targetCol] == MISS);
 
-//     // If we found a high-probability area, return 1 to indicate radar sweep should be used
-//     if (highProbRow != -1 && highProbCol != -1)
-//     {
-//         return 1; // Radar sweep should be used
-//     }
+        BotFire(player->grid, player->ships, targetRow, targetCol, botPlayer, player);
+        return;
+    }
 
-//     // Otherwise, return 0 to indicate radar sweep is not worth it
-//     return 0;
-// }
+    // Else go for the regular sliding window approach
+    int **probabilityGrid = generateProbabilityGridSlidingWindow(playerCopyGrid, player->ships);
 
+    // If torpedo is unlocked and available, use it on the row or column with the highest probability.
+    if (botPlayer->torpedoAvailable)
+    {
+        float rowProbabilities[10] = {0};
+        float colProbabilities[10] = {0};
+
+        // Calculate probabilities for each row and column
+        for (int i = 0; i < 10; i++)
+        {
+            for (int j = 0; j < 10; j++)
+            {
+                rowProbabilities[i] += probabilityGrid[i][j];
+                colProbabilities[j] += probabilityGrid[i][j];
+            }
+        }
+
+        float maxRowProb = 0, maxColProb = 0;
+        int targetRow = 0, targetCol = 0;
+
+        // Find the row and column with the highest probability
+        for (int i = 0; i < 10; i++)
+        {
+            if (rowProbabilities[i] > maxRowProb)
+            {
+                maxRowProb = rowProbabilities[i];
+                targetRow = i;
+            }
+            if (colProbabilities[i] > maxColProb)
+            {
+                maxColProb = colProbabilities[i];
+                targetCol = i;
+            }
+        }
+
+        // Bot fires the torpedo on the row or column with the highest probability
+        if (maxRowProb >= maxColProb)
+        {
+            BotTorpedo(player->grid, 'R', targetRow, botPlayer, player); // Use player's grid
+        }
+        else
+        {
+            BotTorpedo(player->grid, 'C', targetCol, botPlayer, player); // Use player's grid
+        }
+
+        // Free the memory used by the probability grid
+        for (int i = 0; i < 10; i++)
+        {
+            free(probabilityGrid[i]);
+        }
+        free(probabilityGrid);
+        return;
+    }
+
+    // If artillery is unlocked and available (after sinking a ship), use it on the most probable 2x2 area.
+    if (botPlayer->artilleryNextTurn && !botPlayer->torpedoAvailable)
+    {
+        int targetRow = 0, targetCol = 0;
+        int maxProbability = 0;
+
+        // Find the 2x2 area with the highest combined probability
+        for (int i = 0; i < 9; i++)
+        {
+            for (int j = 0; j < 9; j++)
+            {
+                int areaProbability = probabilityGrid[i][j] +
+                                      probabilityGrid[i + 1][j] +
+                                      probabilityGrid[i][j + 1] +
+                                      probabilityGrid[i + 1][j + 1];
+
+                if (areaProbability > maxProbability)
+                {
+                    maxProbability = areaProbability;
+                    targetRow = i;
+                    targetCol = j;
+                }
+            }
+        }
+
+        // Call bot-specific artillery (use player's grid)
+        BotArtillery(player->grid, targetRow, targetCol, botPlayer, player);
+
+        // Free the memory used by the probability grid
+        for (int i = 0; i < 10; i++)
+        {
+            free(probabilityGrid[i]);
+        }
+        free(probabilityGrid);
+        return;
+    }
+
+    // Uses only 2 radar sweep
+    if (botPlayer->radarCount > 1)
+    {
+        int targetRow = 0, targetCol = 0;
+        float maxProbability = 0;
+
+        // Find the 2x2 area with the highest combined probability
+        for (int i = 0; i < 9; i++)
+        {
+            for (int j = 0; j < 9; j++)
+            {
+                float areaProbability = probabilityGrid[i][j] +
+                                        probabilityGrid[i + 1][j] +
+                                        probabilityGrid[i][j + 1] +
+                                        probabilityGrid[i + 1][j + 1];
+
+                if (areaProbability > maxProbability)
+                {
+                    maxProbability = areaProbability;
+                    targetRow = i;
+                    targetCol = j;
+                }
+            }
+        }
+
+        BotRadarSweep(player->grid, targetRow, targetCol, botPlayer, player);
+
+        // Free the memory used by the probability grid
+        for (int i = 0; i < 10; i++)
+        {
+            free(probabilityGrid[i]);
+        }
+        free(probabilityGrid);
+        return;
+    }
+
+    // Only allowed to use 2 smoke screens
+    if (botPlayer->availableScreens > 1)
+    {
+        int targetRow = 0, targetCol = 0;
+        int maxShips = 0;
+
+        // Find the 2x2 area with the most of the bot's ships
+        for (int i = 0; i < 9; i++)
+        {
+            for (int j = 0; j < 9; j++)
+            {
+                int shipCount = 0;
+                if (botPlayer->grid[i][j] > 0)
+                {
+                    shipCount++;
+                }
+                if (botPlayer->grid[i][j + 1] > 0)
+                {
+                    shipCount++;
+                }
+                if (botPlayer->grid[i + 1][j] > 0)
+                {
+                    shipCount++;
+                }
+                if (botPlayer->grid[i + 1][j + 1] > 0)
+                {
+                    shipCount++;
+                }
+                if (shipCount > maxShips)
+                {
+                    maxShips = shipCount;
+                    targetRow = i;
+                    targetCol = j;
+                }
+            }
+        }
+
+        BotSmokeScreen(botPlayer->grid, targetRow, targetCol, botPlayer);
+        botPlayer->availableScreens--; // Decrease smoke screen count after using it
+
+        // Free the memory used by the probability grid
+        for (int i = 0; i < 10; i++)
+        {
+            free(probabilityGrid[i]);
+        }
+        free(probabilityGrid);
+        return;
+    }
+
+    // Default to firing at the cell with the highest probability.
+    int targetRow = 0, targetCol = 0;
+    int maxProbability = 0;
+
+    // Find the cell with the highest probability
+    for (int i = 0; i < 10; i++)
+    {
+        for (int j = 0; j < 10; j++)
+        {
+            if (probabilityGrid[i][j] > maxProbability && probabilityGrid[i][j] < MAX)
+            {
+                maxProbability = probabilityGrid[i][j];
+                targetRow = i;
+                targetCol = j;
+            }
+        }
+    }
+
+    BotFire(player->grid, player->ships, targetRow, targetCol, botPlayer, player);
+
+    // Free the memory used by the probability grid
+    for (int i = 0; i < 10; i++)
+    {
+        free(probabilityGrid[i]);
+    }
+    free(probabilityGrid);
+}
+
+// Bot's move for Easy difficulty with checkerboard pattern and occasional medium moves
+void performBotMoveEasy(struct player *player, struct player *botPlayer)
+{
+    // If artillery or torpedo is available, there's a 50% chance to perform a Medium difficulty special move
+    if (botPlayer->artilleryNextTurn || botPlayer->torpedoAvailable)
+    {
+        int proba = rand() % 100;
+        if (proba < 50)
+        {
+            performBotMoveMedium(player, botPlayer);
+            return;
+        }
+    }
+
+    int targetRow = -1, targetCol = -1;
+    int foundTarget = 0;
+
+    // Target Mode: If a previous hit is found, target adjacent cells
+    for (int i = 0; i < 10 && !foundTarget; i++)
+    {
+        for (int j = 0; j < 10 && !foundTarget; j++)
+        {
+            if (playerCopyGrid[i][j] == HIT)
+            {
+                // Check adjacent cells (Up, Down, Left, Right)
+                int directions[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+                for (int d = 0; d < 4; d++)
+                {
+                    int newRow = i + directions[d][0];
+                    int newCol = j + directions[d][1];
+                    if (newRow >= 0 && newRow < 10 && newCol >= 0 && newCol < 10 &&
+                        playerCopyGrid[newRow][newCol] == WATER)
+                    {
+                        targetRow = newRow;
+                        targetCol = newCol;
+                        foundTarget = 1;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if (!foundTarget)
+    {
+        // Hunt Mode: Fire at a random cell following the checkerboard pattern
+        int attempts = 0;
+        int maxAttempts = 100; // Prevent infinite loop in case of full board
+
+        do
+        {
+            targetRow = rand() % 10;
+            targetCol = rand() % 10;
+            attempts++;
+
+            if (attempts > maxAttempts)
+            {
+                // In case the checkerboard cells are exhausted, pick any random cell
+                do
+                {
+                    targetRow = rand() % 10;
+                    targetCol = rand() % 10;
+                } while (playerCopyGrid[targetRow][targetCol] == HIT || playerCopyGrid[targetRow][targetCol] == MISS);
+                break;
+            }
+        } while ((targetRow + targetCol) % 2 != checkerboardColor ||
+                 playerCopyGrid[targetRow][targetCol] == HIT ||
+                 playerCopyGrid[targetRow][targetCol] == MISS);
+    }
+
+    // Fire at the selected cell
+    BotFire(player->grid, player->ships, targetRow, targetCol, botPlayer, player);
+}
+
+// Bot's standard firing function
 void BotFire(int **grid, int ships[], int row, int col, struct player *attacker, struct player *defender)
 {
     attacker->torpedoAvailable = 0;
     attacker->artilleryNextTurn = 0;
     waitForMilliseconds(500);
 
+    // Check for invalid coordinates
     if (row < 0 || row >= 10 || col < 0 || col >= 10)
     {
-        printWithDelay("Invalid coordinates! Bot loses its turn :(\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "Invalid coordinates! %s loses its turn :(\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
+    // Check if the cell has already been fired upon
     if (grid[row][col] == HIT || grid[row][col] == MISS)
     {
-        printWithDelay("Bot already fired at this location!\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "%s already fired at this location!\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
@@ -832,7 +1163,10 @@ void BotFire(int **grid, int ships[], int row, int col, struct player *attacker,
     {
         grid[row][col] = MISS;
         playerCopyGrid[row][col] = MISS;
-        printWithDelay("The bot missed!\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "%s missed!\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
@@ -845,6 +1179,7 @@ void BotFire(int **grid, int ships[], int row, int col, struct player *attacker,
     if (shipID < 2 || shipID > 5)
     {
         printWithDelay("Invalid ship ID! Something went wrong.\n", 25);
+        waitForMilliseconds(300);
         return;
     }
 
@@ -852,18 +1187,21 @@ void BotFire(int **grid, int ships[], int row, int col, struct player *attacker,
     grid[row][col] = HIT;
     playerCopyGrid[row][col] = HIT;
 
-    printWithDelay("The bot hit your ship!\n", 25);
+    char message[100];
+    snprintf(message, sizeof(message), "%s hit your ship!\n", attacker->name);
+    printWithDelay(message, 25);
+    waitForMilliseconds(300);
 
     if (ships[shipID] == 0)
     {
-        char message[50];
-        snprintf(message, sizeof(message), "The bot sunk your %s!\n",
+        snprintf(message, sizeof(message), "%s sunk your %s!\n", attacker->name,
                  shipID == 2 ? "Submarine" : shipID == 3 ? "Destroyer"
                                          : shipID == 4   ? "Battleship"
                                                          : "Carrier");
         printWithDelay(message, 25);
+        waitForMilliseconds(300);
 
-        // Mark the sunk ship's coordinates as MISS or 0 probability
+        // Mark the sunk ship's coordinates as MISS on the bot's copy grid
         for (int i = 0; i < 10; i++)
         {
             for (int j = 0; j < 10; j++)
@@ -887,21 +1225,29 @@ void BotFire(int **grid, int ships[], int row, int col, struct player *attacker,
     }
 }
 
+// Bot's Radar Sweep function
 void BotRadarSweep(int **grid, int row, int col, struct player *attacker, struct player *defender)
 {
     attacker->torpedoAvailable = 0;
     attacker->artilleryNextTurn = 0;
     waitForMilliseconds(500);
 
-    if (attacker->radarCount <= 0)
+    if (attacker->radarCount <= 0 && attacker->ships[2] > 0)
     {
-        printWithDelay("The bot has no radar sweeps remaining! It loses its turn.\n", 25);
+
+        char message[100];
+        snprintf(message, sizeof(message), "%s has no radar sweeps remaining! It loses its turn.\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
     if (row < 0 || row >= 9 || col < 0 || col >= 9)
     {
-        printWithDelay("Invalid coordinates! The bot loses its turn.\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "Invalid coordinates! %s loses its turn.\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
@@ -924,7 +1270,7 @@ void BotRadarSweep(int **grid, int row, int col, struct player *attacker, struct
 
     if (!found)
     {
-        // printWithDelay("The bot found enemy ships!\n", 25);
+        // Mark the area as MISS on the bot's copy grid
         for (int i = row; i < row + 2; i++)
         {
             for (int j = col; j < col + 2; j++)
@@ -938,11 +1284,14 @@ void BotRadarSweep(int **grid, int row, int col, struct player *attacker, struct
         attacker->radarCount = 0;
         return;
     }
-    printWithDelay("The bot used a radar Sweep!", 25);
+    char message[100];
+    snprintf(message, sizeof(message), "%s used a Radar Sweep!\n", attacker->name);
+    printWithDelay(message, 25);
     waitForMilliseconds(300);
     attacker->radarCount--;
 }
 
+// Bot's Smoke Screen function
 void BotSmokeScreen(int **grid, int row, int col, struct player *attacker)
 {
     attacker->torpedoAvailable = 0;
@@ -951,16 +1300,23 @@ void BotSmokeScreen(int **grid, int row, int col, struct player *attacker)
 
     if (attacker->availableScreens <= 0)
     {
-        printWithDelay("The bot has no smoke screens available! It loses its turn.\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "%s has no smoke screens available! It loses its turn.\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
     if (row < 0 || row >= 9 || col < 0 || col >= 9)
     {
-        printWithDelay("Invalid coordinates! The bot loses its turn.\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "Invalid coordinates! %s loses its turn.\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
+    // Apply smoke screen to the selected 2x2 area
     for (int i = row; i < row + 2; i++)
     {
         for (int j = col; j < col + 2; j++)
@@ -976,17 +1332,23 @@ void BotSmokeScreen(int **grid, int row, int col, struct player *attacker)
 
     clear_terminal();
 
-    printWithDelay("The bot deployed a smoke screen! The move is hidden.\n", 25);
+    char message[100];
+    snprintf(message, sizeof(message), "%s deployed a Smoke Screen! The move is hidden.\n", attacker->name);
+    printWithDelay(message, 25);
     waitForMilliseconds(300);
 }
 
+// Bot's Artillery function
 void BotArtillery(int **grid, int row, int col, struct player *attacker, struct player *opponent)
 {
     waitForMilliseconds(500); // Simulate a small delay
 
     if (!attacker->artilleryNextTurn)
     {
-        printWithDelay("Artillery not available! It was only available for the next turn after sinking a ship.\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "Artillery not available for %s! It was only available for the next turn after sinking a ship.\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
@@ -994,13 +1356,17 @@ void BotArtillery(int **grid, int row, int col, struct player *attacker, struct 
 
     if (row < 0 || row >= 9 || col < 0 || col >= 9)
     {
-        printWithDelay("Invalid coordinates! The bot loses its turn.\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "Invalid coordinates! %s loses its turn.\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
     int hit = 0;
     int *ships = opponent->ships;
 
+    // Apply artillery to the selected 2x2 area
     for (int i = row; i < row + 2; i++)
     {
         for (int j = col; j < col + 2; j++)
@@ -1021,12 +1387,13 @@ void BotArtillery(int **grid, int row, int col, struct player *attacker, struct 
                 if (ships[shipID] == 0) // If the ship is sunk
                 {
                     // Notify about the ship being sunk
-                    char message[50];
-                    snprintf(message, sizeof(message), "The bot sunk your %s!\n",
+                    char message[100];
+                    snprintf(message, sizeof(message), "%s sunk your %s!\n", attacker->name,
                              shipID == 2 ? "Submarine" : shipID == 3 ? "Destroyer"
                                                      : shipID == 4   ? "Battleship"
                                                                      : "Carrier");
                     printWithDelay(message, 25);
+                    waitForMilliseconds(300);
 
                     opponent->shipsRemaining--;   // Decrease remaining ships
                     attacker->shipsSunk++;        // Increase bot's sunk ships
@@ -1056,14 +1423,21 @@ void BotArtillery(int **grid, int row, int col, struct player *attacker, struct 
 
     if (hit)
     {
-        printWithDelay("The bot's artillery hit!\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "%s's artillery hit!\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
     }
     else
     {
-        printWithDelay("The bot's artillery missed!\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "%s's artillery missed!\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
     }
 }
 
+// Bot's Torpedo function
 void BotTorpedo(int **grid, char type, int index, struct player *attacker, struct player *opponent)
 {
     waitForMilliseconds(500); // Simulate a small delay
@@ -1071,7 +1445,10 @@ void BotTorpedo(int **grid, char type, int index, struct player *attacker, struc
     // If torpedo has already been used, show a message and exit
     if (!attacker->torpedoAvailable)
     {
-        printWithDelay("The bot's torpedo has already been used!\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "%s's torpedo has already been used!\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
@@ -1081,7 +1458,10 @@ void BotTorpedo(int **grid, char type, int index, struct player *attacker, struc
     // Ensure the index is within valid range
     if (index < 0 || index >= 10)
     {
-        printWithDelay("Invalid index! The bot loses its turn.\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "Invalid index! %s loses its turn.\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
@@ -1108,12 +1488,14 @@ void BotTorpedo(int **grid, char type, int index, struct player *attacker, struc
                 if (opponent->ships[shipID] == 0) // If the ship is sunk
                 {
                     // Notify about the ship being sunk
-                    char message[50];
-                    snprintf(message, sizeof(message), "The bot sunk your %s!\n",
+                    char message[100];
+                    snprintf(message, sizeof(message), "%s sunk your %s!\n", attacker->name,
                              shipID == 2 ? "Submarine" : shipID == 3 ? "Destroyer"
                                                      : shipID == 4   ? "Battleship"
                                                                      : "Carrier");
                     printWithDelay(message, 25);
+                    waitForMilliseconds(300);
+
                     opponent->shipsRemaining--;   // Decrease remaining ships
                     attacker->shipsSunk++;        // Increase bot's sunk ships
                     attacker->availableScreens++; // Give an extra screen (if relevant)
@@ -1160,12 +1542,14 @@ void BotTorpedo(int **grid, char type, int index, struct player *attacker, struc
                 if (opponent->ships[shipID] == 0) // If the ship is sunk
                 {
                     // Notify about the ship being sunk
-                    char message[50];
-                    snprintf(message, sizeof(message), "The bot sunk your %s!\n",
+                    char message[100];
+                    snprintf(message, sizeof(message), "%s sunk your %s!\n", attacker->name,
                              shipID == 2 ? "Submarine" : shipID == 3 ? "Destroyer"
                                                      : shipID == 4   ? "Battleship"
                                                                      : "Carrier");
                     printWithDelay(message, 25);
+                    waitForMilliseconds(300);
+
                     opponent->shipsRemaining--;   // Decrease remaining ships
                     attacker->shipsSunk++;        // Increase bot's sunk ships
                     attacker->availableScreens++; // Give an extra screen (if relevant)
@@ -1193,71 +1577,25 @@ void BotTorpedo(int **grid, char type, int index, struct player *attacker, struc
     }
     else
     {
-        printWithDelay("Invalid type! Use 'R' for row or 'C' for column.\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "Invalid type! Use 'R' for row or 'C' for column.\n");
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
         return;
     }
 
     if (hit)
     {
-        printWithDelay("The bot's torpedo hit!\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "%s's torpedo hit!\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
     }
     else
     {
-        printWithDelay("The bot's torpedo missed!\n", 25);
+        char message[100];
+        snprintf(message, sizeof(message), "%s's torpedo missed!\n", attacker->name);
+        printWithDelay(message, 25);
+        waitForMilliseconds(300);
     }
 }
-// void printGrids(int **grid)
-// {
-//     for (int i = 0; i < 10; i++)
-//     {
-//         for (int j = 0; j < 10; j++)
-//         {
-//             if (grid[i][j] >= MAX)
-//             {
-//                 printf("X ");
-//                 continue;
-//             }
-//             printf("%d ", grid[i][j]);
-//         }
-//         printf("\n");
-//     }
-// }
-
-// int main()
-// {
-//     int ships[6] = {0, 0, 2, 3, 4, 5};
-//     int **grid = allocateMem();
-//     // for (int j = 0; j < 5; j++)
-//     //     grid[0][j] = 5;
-
-//     // for (int i = 1; i <= 4; i++)
-//     //     grid[i][4] = 4;
-
-//     // for (int j = 6; j < 9; j++)
-//     //     grid[6][j] = 3;
-
-//     // for (int j = 7; j < 9; j++)
-//     //     grid[9][j] = 2;
-
-//     grid[3][3] = -2; // Miss on size-5 ship
-//     grid[4][4] = -2;
-//     grid[5][5] = -2;
-//     grid[6][6] = -2; // Miss
-//     grid[2][7] = -2;
-//     grid[2][6] = -1;
-//     grid[3][7] = -2;
-//     grid[3][6] = -1;
-//     int **probaGrid = generateProbabilityGrid(grid, ships);
-//     printGrids(probaGrid);
-
-//     // Free allocated memory
-//     for (int i = 0; i < 10; i++)
-//     {
-//         free(grid[i]);
-//         free(probaGrid[i]);
-//     }
-//     free(grid);
-//     free(probaGrid);
-
-//     return 0;
-// }

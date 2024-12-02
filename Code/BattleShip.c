@@ -790,6 +790,36 @@ void StartLocalGame()
 
 void StartBotGame()
 {
+    // Step 0: Choose difficulty
+    char difficultyChar;
+    while (1)
+    {
+        printWithDelay("Choose the difficulty:\nEasy (Enter 1)\nMedium (Enter 2)\nHard (Enter 3)\n", 25);
+        scanf(" %c", &difficultyChar);
+        getchar();
+        if (!(difficultyChar == '1' || difficultyChar == '2' || difficultyChar == '3'))
+        {
+            continue;
+        }
+        else
+        {
+            break;
+        }
+    }
+    int difficulty;
+    if (difficultyChar == '1')
+    {
+        difficulty = 1;
+    }
+    else if (difficultyChar == '2')
+    {
+        difficulty = 2;
+    }
+    else
+    {
+        difficulty = 3;
+    }
+
     // Step 1: Get the player's name
     char *ptrname1 = (char *)malloc(sizeof(char) * 21);
     printWithDelay("Player 1, please enter your name (0 - 20 characters): ", 25);
@@ -810,7 +840,7 @@ void StartBotGame()
     struct player player1 = {ptrname1, {0, 0, 2, 3, 4, 5}, 4, allocate(), 3, 0, 0, 0, 0};
     struct player player2 = {botName, {0, 0, 2, 3, 4, 5}, 4, allocate(), 3, 0, 0, 0, 0};
     getchar();
-    printWithDelay("Press any key to start the game...", 25);
+    printWithDelay("Press Enter to start the game...", 25);
     getchar();
     // Step 4: Player places their ships
     clear_terminal();
@@ -861,8 +891,7 @@ void StartBotGame()
         }
         else
         {
-            // Bot's move
-            performBotMove(&player1, &player2);
+            selectMoveDifficulty(&player1, &player2, difficulty);
         }
         clear_terminal();        // Clear screen for next turn
         turn = ((turn + 1) % 2); // Alternate turns

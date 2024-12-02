@@ -13,7 +13,10 @@ char *generateBotName();
 void placeShips(struct player *botPlayer);
 
 // Function to perform a bot move (decides and performs the best move)
-void performBotMove(struct player *player, struct player *botPlayer);
+void selectMoveDifficulty(struct player *player, struct player *botPlayer, int difficulty);
+void performBotMoveHard(struct player *player, struct player *botPlayer);
+void performBotMoveMedium(struct player *player, struct player *botPlayer);
+void performBotMoveEasy(struct player *player, struct player *botPlayer);
 
 // Bot-specific move functions
 void BotFire(int **grid, int ships[], int row, int col, struct player *attacker, struct player *defender);
@@ -21,8 +24,5 @@ void BotRadarSweep(int **grid, int row, int col, struct player *attacker, struct
 void BotSmokeScreen(int **grid, int row, int col, struct player *attacker);
 void BotArtillery(int **grid, int row, int col, struct player *attacker, struct player *defender);
 void BotTorpedo(int **grid, char type, int index, struct player *attacker, struct player *defender);
-
-// Utility function to determine if radar sweep should be used
-int shouldUseRadar(int **probabilityGrid);
 
 #endif
